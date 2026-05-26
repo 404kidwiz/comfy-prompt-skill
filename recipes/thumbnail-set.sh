@@ -19,9 +19,11 @@ TOPIC=""
 SCENE=""
 MAX_RETRIES=1
 SKIP_ON_FAIL=0
+DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --dry-run)      DRY_RUN=1; shift ;;
         --retry)        MAX_RETRIES="$2"; shift 2 ;;
         --skip-on-fail) SKIP_ON_FAIL=1; shift ;;
         -*)             echo "unknown flag: $1" >&2; exit 1 ;;
@@ -38,7 +40,7 @@ if [[ -z "$TOPIC" || -z "$SCENE" ]]; then
     exit 1
 fi
 
-if [[ -z "${COMFY_API_KEY:-}" ]]; then
+if [[ "$DRY_RUN" -ne 1 && -z "${COMFY_API_KEY:-}" ]]; then
     echo "error: COMFY_API_KEY not set" >&2; exit 1
 fi
 
@@ -57,6 +59,10 @@ run_step() {
     local label="$1" cost="$2"; shift 2; [[ "${1:-}" == "--" ]] && shift
     local attempt=0 rc=0
     echo "▶ $label  (est. $cost)"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "  [DRY-RUN] would execute: $*"
+        return 0
+    fi
     while [[ $attempt -le $MAX_RETRIES ]]; do
         [[ $attempt -gt 0 ]] && echo "  ↻ retry $attempt/$MAX_RETRIES"
         if "$@"; then rc=0; break; else rc=$?; attempt=$((attempt+1)); fi

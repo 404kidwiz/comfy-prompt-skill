@@ -4,6 +4,29 @@ All notable changes to this skill. Follows Keep a Changelog conventions.
 
 ---
 
+## [3.1.0] — 2026-05-26 (production hardening)
+
+### Added
+- **`scripts/schema_introspect.py`** — runtime parser for `comfy generate schema <model>` output. Detects aspect-flag family + dimension constraints (e.g. /32 for flux-pro) dynamically. 24h cache. Catches new models automatically.
+- **`scripts/models_info.py`** — enriched model catalog: type, cost tier, mode, aspect family, partner. `cf models` now uses this; `cf models --raw` falls back to plain `comfy generate list`.
+- **`tests/`** — 38 pytest unit tests + 9 bats integration tests. Mocked `comfy` binary, isolated registries. All pass on first run.
+  - `test_aspect_flags.py` (8), `test_lint.py` (6), `test_jobs.py` (4), `test_dedup.py` (5), `test_translate.py` (4), `test_schema_introspect.py` (7), `test_compose.py` (4), `test_recipes.bats` (9)
+- **`recipes/_runlib.sh`** — shared `AF()` + `run_step()` helpers + `parse_runlib_flag()` for `--dry-run`.
+- **`--dry-run` flag on all 8 recipes** — print pipeline without executing. Bypasses API key check.
+
+### Changed
+- `scripts/aspect_flags.py` — now uses runtime schema introspection first, falls back to hardcoded families. `COMFY_NO_INTROSPECT=1` forces fallback path. flux-pro dimensions auto-rounded to multiple-of-32 from detected constraint.
+- `scripts/lint.py` — validates aspect against live schema enum (e.g. catches `aspect "21:9"` when `--ratio` enum doesn't include it).
+- `~/.local/bin/cf gen` — auto-checks dedup before submit, registers output in dedup index after. `COMFY_NO_DEDUP=1` opts out.
+- `~/.local/bin/cf models` — routes through `models_info.py` for enriched table.
+- `scripts/schema_cache.py` — fixed argparse bug (subparser + positional conflict). Now `python3 schema_cache.py <model>` works directly.
+- All 8 recipes — `COMFY_API_KEY` check gated on `DRY_RUN` so dry-run works offline.
+
+### Removed
+- N/A
+
+---
+
 ## [3.0.1] — 2026-05-26 (schema-fix patch)
 
 ### Fixed — Comfy Cloud CLI schema mismatch

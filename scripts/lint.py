@@ -33,6 +33,15 @@ from pathlib import Path
 
 SKILL_DIR = Path.home() / ".claude" / "skills" / "comfy-prompt"
 
+# Try to import schema introspection for live flag validation
+_INTROSPECT_AVAILABLE = False
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from schema_introspect import fetch_schema, parse_schema
+    _INTROSPECT_AVAILABLE = True
+except ImportError:
+    pass
+
 # Known cloud models (from SKILL.md frontmatter)
 KNOWN_MODELS = {
     "flux-2", "flux-pro", "flux-ultra", "flux-kontext", "flux-kontext-max",
@@ -110,13 +119,35 @@ def lint_prompt(prompt: str, model: str | None, gen_type: str | None,
     errors: list[str] = []
     warnings: list[str] = []
 
-    # Rule 1: Model verification
+    # Rule 1: Model verification — prefer live schema check if available
+    schema_model_exists = False
+    if model and _INTROSPECT_AVAILABLE:
+        raw = fetch_schema(model)
+        if raw:
+            schema_model_exists = True
+
     if model:
-        if model.lower() not in KNOWN_MODELS:
+        if not schema_model_exists and model.lower() not in KNOWN_MODELS:
             errors.append(f"unknown model: {model!r} — not in cloud-models list. "
                           f"Run `comfy generate list` to verify.")
     else:
         warnings.append("no --model specified — can't verify model-specific rules")
+
+    # Rule 1b: Live aspect-flag validation via schema
+    if model and aspect and _INTROSPECT_AVAILABLE and schema_model_exists:
+        raw = fetch_schema(model)
+        if raw:
+            parsed = parse_schema(raw)
+            flags = parsed.get("flags", {})
+            # If model has --ratio enum, validate aspect against it
+            if "ratio" in flags and flags["ratio"].get("enum"):
+                if aspect not in flags["ratio"]["enum"]:
+                    errors.append(f"aspect {aspect!r} not in {model} --ratio enum: "
+                                  f"{'|'.join(flags['ratio']['enum'])}")
+            if "aspect_ratio" in flags and flags["aspect_ratio"].get("enum"):
+                if aspect not in flags["aspect_ratio"]["enum"]:
+                    warnings.append(f"aspect {aspect!r} not in {model} --aspect_ratio enum: "
+                                     f"{'|'.join(flags['aspect_ratio']['enum'])}")
 
     # Detect video model
     is_video = (gen_type == "video") or (model and model.lower() in VIDEO_MODELS)

@@ -32,7 +32,19 @@ Stdlib only.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from pathlib import Path
+
+# Try to import schema_introspect for runtime detection.
+# Falls back to hardcoded families if introspection unavailable.
+_INTROSPECT_AVAILABLE = False
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from schema_introspect import fetch_schema, parse_schema, detect_aspect_family, detect_dimension_constraints
+    _INTROSPECT_AVAILABLE = True
+except ImportError:
+    pass
 
 # ── ASPECT → DIMENSIONS ───────────────────────────────────────────────────────
 # All dimensions are multiples of 32 — flux-pro enforces this constraint.
@@ -134,51 +146,121 @@ FAMILY_NO_ASPECT = {
 }
 
 
+def _round_to_multiple(value: int, multiple: int) -> int:
+    """Round down to nearest multiple."""
+    return (value // multiple) * multiple
+
+
+def detect_family_runtime(model: str) -> str | None:
+    """
+    Detect family via runtime schema introspection.
+    Returns family name on success, None if introspection unavailable or failed.
+    """
+    if not _INTROSPECT_AVAILABLE or os.environ.get("COMFY_NO_INTROSPECT") == "1":
+        return None
+    try:
+        raw = fetch_schema(model)
+        if not raw:
+            return None
+        parsed = parse_schema(raw)
+        return detect_aspect_family(parsed)
+    except Exception:
+        return None
+
+
+def detect_constraints_runtime(model: str) -> dict | None:
+    """Detect dimension constraints (e.g. /32) via introspection."""
+    if not _INTROSPECT_AVAILABLE or os.environ.get("COMFY_NO_INTROSPECT") == "1":
+        return None
+    try:
+        raw = fetch_schema(model)
+        if not raw:
+            return None
+        parsed = parse_schema(raw)
+        return detect_dimension_constraints(parsed)
+    except Exception:
+        return None
+
+
 def aspect_flags_for(model: str, aspect: str, resolution: str = "1080p") -> list[str]:
     """
     Return CLI flag list for (model, aspect).
+
+    Resolution order:
+      1. Runtime schema introspection (if `comfy` available + cache fresh)
+      2. Hardcoded family sets (fallback)
+      3. Empty list (unknown model)
 
     Empty list if model doesn't accept a dimension flag.
     """
     model = model.lower().strip()
     aspect = aspect.strip()
 
-    if model in FAMILY_NO_ASPECT:
+    # Try runtime introspection first
+    runtime_family = detect_family_runtime(model)
+    if runtime_family:
+        family = runtime_family
+        # Also detect constraints for width/height families
+        constraints = detect_constraints_runtime(model) or {}
+    else:
+        # Fall back to hardcoded families
+        if model in FAMILY_NO_ASPECT:
+            return []
+        if model in FAMILY_WIDTH_HEIGHT:
+            family = "width_height"
+        elif model in FAMILY_ASPECT_RATIO_STR:
+            family = "aspect_ratio_str"
+        elif model in FAMILY_RATIO_ENUM_ONLY:
+            family = "ratio_enum_only"
+        elif model in FAMILY_RATIO_PLUS_RESOLUTION:
+            family = "ratio_plus_resolution"
+        elif model in FAMILY_SIZE_STRING:
+            family = "size_string"
+        elif model in FAMILY_PIKA_ASPECT_FLOAT:
+            family = "pika_aspect_float"
+        else:
+            print(f"# warning: unknown model {model!r}, guessing --aspect_ratio {aspect}",
+                  file=sys.stderr)
+            return ["--aspect_ratio", aspect]
+        constraints = {"multiple_of": 32 if model in {"flux-pro", "flux-2"} else None}
+
+    # Dispatch by family
+    if family == "none":
         return []
 
-    if model in FAMILY_WIDTH_HEIGHT:
-        # flux-ultra and flux-2 can use hi-res; flux-pro must stick to /32 dims
+    if family == "width_height":
         if model in FAMILY_HIRES_OK:
             w, h = ASPECT_TO_DIMS_HIRES.get(aspect, ASPECT_TO_DIMS.get(aspect, (1024, 1024)))
         else:
             w, h = ASPECT_TO_DIMS.get(aspect, (1024, 1024))
+        # Apply constraints (e.g. multiple-of-32 for flux-pro)
+        mult = constraints.get("multiple_of")
+        if mult:
+            w = _round_to_multiple(w, mult)
+            h = _round_to_multiple(h, mult)
         return ["--width", str(w), "--height", str(h)]
 
-    if model in FAMILY_ASPECT_RATIO_STR:
+    if family == "aspect_ratio_str":
         return ["--aspect_ratio", aspect]
 
-    if model in FAMILY_RATIO_ENUM_ONLY:
+    if family == "ratio_enum_only":
         return ["--ratio", aspect]
 
-    if model in FAMILY_RATIO_PLUS_RESOLUTION:
+    if family == "ratio_plus_resolution":
         return ["--ratio", aspect, "--resolution", resolution]
 
-    if model in FAMILY_SIZE_STRING:
-        # DALL-E/recraft accept hi-res; use larger dimensions
+    if family == "size_string":
         if model in FAMILY_HIRES_OK:
             w, h = ASPECT_TO_DIMS_HIRES.get(aspect, ASPECT_TO_DIMS.get(aspect, (1024, 1024)))
         else:
             w, h = ASPECT_TO_DIMS.get(aspect, (1024, 1024))
         return ["--size", f"{w}x{h}"]
 
-    if model in FAMILY_PIKA_ASPECT_FLOAT:
+    if family == "pika_aspect_float":
         ratio = ASPECT_TO_PIKA_FLOAT.get(aspect, 1.7778)
         return ["--aspectRatio", f"{ratio}"]
 
-    # Unknown model — emit a warning to stderr but try aspect_ratio as best guess
-    print(f"# warning: unknown model {model!r}, guessing --aspect_ratio {aspect}",
-          file=sys.stderr)
-    return ["--aspect_ratio", aspect]
+    return []
 
 
 def main() -> int:

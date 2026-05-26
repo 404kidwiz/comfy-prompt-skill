@@ -120,27 +120,31 @@ def cmd_clear(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="24h schema cache for comfy generate")
-    sub = p.add_subparsers(dest="cmd")
-
-    # Default action (no subcommand) = get
-    p.add_argument("model", nargs="?", help="Model name (get mode if no subcommand)")
-    p.add_argument("--refresh", action="store_true", help="Force refresh")
-    p.add_argument("--ttl-hours", type=int, default=DEFAULT_TTL_HOURS, help="Cache TTL (default 24h)")
-
-    p_list = sub.add_parser("list", help="List cached schemas")
-    p_list.set_defaults(func=cmd_list)
-
-    p_clear = sub.add_parser("clear", help="Clear cache (one model or all)")
-    p_clear.add_argument("model", nargs="?", help="Model to clear (omit = clear all)")
-    p_clear.set_defaults(func=cmd_clear)
-
-    args = p.parse_args()
-    if args.cmd:
-        return args.func(args)
-    if not args.model:
-        p.print_help()
+    # Manual arg parsing — argparse subparsers + positional don't mix cleanly
+    argv = sys.argv[1:]
+    if not argv:
+        print("usage: schema_cache.py <model> [--refresh] [--ttl-hours N]")
+        print("       schema_cache.py list")
+        print("       schema_cache.py clear [<model>]")
         return 2
+
+    if argv[0] == "list":
+        class _A: pass
+        return cmd_list(_A())
+
+    if argv[0] == "clear":
+        class _A: pass
+        a = _A()
+        a.model = argv[1] if len(argv) > 1 else None
+        return cmd_clear(a)
+
+    # Default: get mode
+    p = argparse.ArgumentParser(description="24h schema cache for comfy generate")
+    p.add_argument("model", help="Model name")
+    p.add_argument("--refresh", action="store_true", help="Force refresh")
+    p.add_argument("--ttl-hours", type=int, default=DEFAULT_TTL_HOURS,
+                   help="Cache TTL (default 24h)")
+    args = p.parse_args(argv)
     return cmd_get(args)
 
 
