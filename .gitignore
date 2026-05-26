@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Cache
+.comfy-cache/
+schema_cache_data/
+
+# Secrets — never commit
+.env
+.env.local
+*.key
+secrets.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Output (should never end up in skill dir but just in case)
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.mp4
+*.webm
+
+# Allow press-kit / launch-kit assets if any
+!launch-kit/**/*.png
+!launch-kit/**/*.jpg

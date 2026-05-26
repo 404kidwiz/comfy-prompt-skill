@@ -1,0 +1,112 @@
+# brand.yaml — Project brand config for comfy-prompt
+#
+# Claude reads this file before generating prompts and weaves the brand
+# identity into the Look line of every MCSLA prompt automatically.
+#
+# Usage:
+#   Claude Code: mention "use brand config" or reference brand.yaml in your request
+#   Shell: cat ~/.claude/skills/comfy-prompt/brand.yaml
+#
+# How it works:
+#   The brand identity below is injected into the Look line of MCSLA prompts
+#   when the user is generating assets for a project, product, or client.
+#
+# IMPORTANT: Fill in the fields that apply. Leave unused fields blank or remove them.
+# This file is project-agnostic — copy it into any project directory and customize.
+
+# ── IDENTITY ──────────────────────────────────────────────────────────────────
+
+# Project or client name
+name: ""
+
+# One-line description of the brand
+tagline: ""
+
+# ── VISUAL IDENTITY ───────────────────────────────────────────────────────────
+
+# Primary color palette (describe in natural language — not hex, Comfy can't use hex directly)
+# Examples: "warm amber and deep navy", "monochrome silver and black", "forest green and cream"
+palette: ""
+
+# Visual mood / tone
+# Examples: "luxury minimal", "raw documentary", "neon-drenched cyberpunk", "warm editorial"
+mood: ""
+
+# Typography register (describes the feel, not a font name)
+# Examples: "bold extended sans", "refined serif", "brutalist mono", "clean geometric"
+typography: ""
+
+# ── PHOTOGRAPHY / VIDEO STYLE ─────────────────────────────────────────────────
+
+# Preferred aspect ratio for images
+# Options: 1:1 | 3:4 | 4:5 | 16:9 | 9:16 | 21:9
+image_aspect_ratio: "1:1"
+
+# Preferred aspect ratio for videos
+# Options: 16:9 | 9:16 | 1:1 | 4:5
+video_aspect_ratio: "9:16"
+
+# Lighting preference
+# Examples: "single-key chiaroscuro", "soft diffused daylight", "golden-hour practicals"
+lighting: ""
+
+# Camera style
+# Examples: "locked-off", "handheld intimate", "slow Steadicam", "drone establishing"
+camera: ""
+
+# Style register (maps to styles/ snippets)
+# Options: anamorphic-1970s | cyberpunk-blade-runner | film-noir | studio-ghibli | pixar-3d | editorial-vogue | concept-art-painted
+style_preset: ""
+
+# Additional look keywords to always append
+# These are injected directly into the Look line
+# Example: "desaturated shadows, warm highlights, subtle film grain"
+look_keywords: ""
+
+# ── NEGATIVE CONSTRAINTS ──────────────────────────────────────────────────────
+
+# Words/concepts to always exclude from prompts for this brand
+# These append to the standard negative constraints
+# Example: "bright colors, cartoon, comic, childlike"
+negatives: ""
+
+# ── ASSETS ────────────────────────────────────────────────────────────────────
+
+# Reference image for brand identity (used as --image flag in i2i workflows)
+# Path is relative to HOME or absolute
+reference_image: ""
+
+# Output tag to use for all generated assets (used in organize.py paths)
+# Example: "client-acme", "project-nova", "brand-assets"
+output_tag: ""
+
+# ── MODEL PREFERENCES ─────────────────────────────────────────────────────────
+
+# Preferred image model (leave blank to let skill auto-route)
+# See model-guide.md for options
+preferred_image_model: ""
+
+# Preferred video model (leave blank to let skill auto-route)
+preferred_video_model: ""
+
+# Cloud or local
+execution_path: "cloud"   # cloud | local
+
+# ── EXAMPLE (uncomment and fill in to get started) ────────────────────────────
+#
+# name: "Nova Coffee Co."
+# tagline: "Coffee for builders."
+# palette: "deep espresso brown, warm cream, matte black accents"
+# mood: "minimal industrial — warm but no-nonsense"
+# typography: "bold extended sans, tight kerning"
+# image_aspect_ratio: "1:1"
+# video_aspect_ratio: "9:16"
+# lighting: "single overhead key, warm fill, deep shadows"
+# camera: "locked-off MCU for product, slow Steadicam for lifestyle"
+# look_keywords: "heavy film grain, crushed blacks, warm shadows, matte finish"
+# negatives: "bright colors, white backgrounds, cartoon, illustration, CGI"
+# reference_image: "~/assets/nova-brand-reference.png"
+# output_tag: "nova-coffee"
+# preferred_image_model: "flux-ultra"
+# preferred_video_model: "pika-i2v"
+# execution_path: "cloud"
