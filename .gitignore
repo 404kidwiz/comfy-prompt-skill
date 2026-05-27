@@ -39,6 +39,9 @@ htmlcov/
 *.mp4
 *.webm
 
-# Allow press-kit / launch-kit assets if any
+# Allow press-kit / launch-kit / assets directories
 !launch-kit/**/*.png
 !launch-kit/**/*.jpg
+!assets/**/*.png
+!assets/**/*.jpg
+!assets/**/*.webp
