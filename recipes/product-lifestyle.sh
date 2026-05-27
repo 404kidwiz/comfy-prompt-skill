@@ -22,6 +22,8 @@ PLATFORM="square"   # default for product: square
 MAX_RETRIES=1
 SKIP_ON_FAIL=0
 DRY_RUN=0
+QUALITY="s"
+BUDGET=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -29,13 +31,15 @@ while [[ $# -gt 0 ]]; do
         --dry-run)      DRY_RUN=1; shift ;;
         --retry)        MAX_RETRIES="$2"; shift 2 ;;
         --skip-on-fail) SKIP_ON_FAIL=1; shift ;;
+        --quality|-q)   QUALITY="$2"; shift 2 ;;
+        --budget)       BUDGET=1; shift ;;
         -*)             echo "unknown flag: $1" >&2; exit 1 ;;
         *)              PRODUCT="$1"; shift ;;
     esac
 done
 
 if [[ -z "$PRODUCT" ]]; then
-    echo "usage: $0 \"product description\" [--platform square|reel|wide] [--retry N] [--skip-on-fail]" >&2
+    echo "usage: $0 \"product description\" [--quality s|a|b|c] [--budget] [--platform square|reel|wide]" >&2
     exit 1
 fi
 
@@ -59,6 +63,18 @@ mkdir -p "$OUT_DIR"
 FAIL_LOG="$OUT_DIR/_failures.log"
 
 AF() { python3 "$SKILL_DIR/scripts/aspect_flags.py" "$@" 2>/dev/null; }
+
+# Tier resolver — premium first
+TIER() {
+    local task="$1" q="${2:-$QUALITY}"
+    local b=""; [[ "$BUDGET" == "1" ]] && b="--budget"
+    python3 "$SKILL_DIR/scripts/tiers.py" "$task" --quality "$q" $b 2>/dev/null
+}
+
+HERO_MODEL="$(TIER image)"
+HERO_SUB="$(python3 "$SKILL_DIR/scripts/tiers.py" image --quality "$QUALITY" $([[ "$BUDGET" == "1" ]] && echo --budget) --sub-flags 2>/dev/null)"
+BG_REMOVE_MODEL="$(TIER bg-remove)"
+BG_REPLACE_MODEL="$(TIER bg-replace)"
 
 # Lifestyle scenes
 declare -a SCENES=(
@@ -114,16 +130,17 @@ echo "  Output  : $OUT_DIR"
 echo ""
 
 HERO="$OUT_DIR/00_hero.png"
-run_step "Hero on white seamless (flux-ultra)" "~\$0.10" -- \
-    comfy generate flux-ultra \
+# shellcheck disable=SC2086
+run_step "Hero on white seamless ($HERO_MODEL)" "~\$0.15 (premium)" -- \
+    comfy generate $HERO_MODEL $HERO_SUB \
         --prompt "$PRODUCT on seamless white background, MCU static locked-off camera, soft overhead key with even fill, catalog photography, ultra-sharp, color-accurate, deep blacks, no clutter, photoreal" \
-        $(AF flux-ultra 1:1) \
+        $(AF $HERO_MODEL 1:1) \
         --download "$HERO" || { HERO=""; }
 
 CUTOUT="$OUT_DIR/00_cutout.png"
 if [[ -n "${HERO:-}" && -f "$HERO" ]]; then
-    run_step "Background remove (recraft-rmbg)" "~\$0.02" -- \
-        comfy generate recraft-rmbg --image "$HERO" --download "$CUTOUT" || { CUTOUT=""; }
+    run_step "Background remove ($BG_REMOVE_MODEL)" "~\$0.02" -- \
+        comfy generate "$BG_REMOVE_MODEL" --image "$HERO" --download "$CUTOUT" || { CUTOUT=""; }
 else
     echo "  ⏭  Cutout skipped — hero not available"; CUTOUT=""
 fi
@@ -138,8 +155,8 @@ for i in "${!SCENES[@]}"; do
     out="$OUT_DIR/0${n}_${tag}.png"
 
     if [[ -n "${INPUT:-}" && -f "$INPUT" ]]; then
-        run_step "Scene $n/4: $tag (recraft-replace-bg)" "~\$0.07" -- \
-            comfy generate recraft-replace-bg \
+        run_step "Scene $n/4: $tag ($BG_REPLACE_MODEL)" "~\$0.07" -- \
+            comfy generate "$BG_REPLACE_MODEL" \
                 --image "$INPUT" \
                 --prompt "$scene, keep product lighting consistent with new environment, product remains hero focus, sharp product, soft environmental blur" \
                 --download "$out" && SCENE_OUTPUTS+=("$out") || true

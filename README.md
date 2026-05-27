@@ -1,9 +1,40 @@
-# comfy-prompt — Production-grade Comfy prompts
+# comfy-prompt — Production-grade Comfy prompts · v3.2.0
+
+**Premium-first, tier-aware** workflow layer for Comfy Cloud. Single `cf` command-line tool, 8 multi-step recipes, 38 unit tests, tier resolver routing every task to the highest-quality model by default.
 
 Sister skill to `comfyui-cli`. This writes the prompt. `comfyui-cli` runs it.
 
+## What's new in v3.2.0 — premium-first tier system
+
+- **Tier resolver** (`scripts/tiers.py`) — S/A/B/C tier system per task type
+- **`cf auto <task>`** — auto-routes to premium model for the task
+- **`--budget` flag** — opt-in scale-back from S to B everywhere
+- **All 8 recipes updated** — accept `--quality s|a|b|c` and `--budget`
+- **Refreshed cost table** — 62 models including gemini-3-pro-image-preview, kling v1-v3, hailuo, luma, moonvalley
+- **Premium defaults**:
+  - Image → Gemini 3 Pro (`nano-banana --model gemini-3-pro-image-preview`)
+  - Image-text → Ideogram
+  - Image-edit → Flux Kontext Max
+  - Video T2V → Kling v3
+  - Video I2V → Kling v3 I2V
+
 Adapted from [Higgsfield AI prompt skill](https://github.com/OSideMedia/higgsfield-ai-prompt-skill)
 with all models remapped to Comfy Cloud + local ComfyUI blueprints.
+
+## Install
+
+```bash
+# Symlink cf wrapper into PATH
+ln -sf ~/.claude/skills/comfy-prompt/bin/cf ~/.local/bin/cf
+
+# Set API key
+export COMFY_API_KEY=comfyui-...     # get one at platform.comfy.org/api-keys
+
+# Verify
+cf help
+cf models                            # list all 50+ cloud models
+cf tiers image                       # preview tier resolution for "image" task
+```
 
 ## File map
 
@@ -76,16 +107,39 @@ comfy-prompt/
 ## Quick start
 
 ```bash
-# Set API key (one-time)
-export COMFY_API_KEY=comfyui-...
+# Premium auto-routing (default: S tier = Gemini 3 Pro)
+cf auto image "matte black coffee mug on wooden counter, golden hour"
 
-# Try a recipe
-~/.claude/skills/comfy-prompt/recipes/instagram-ad.sh "matte black coffee mug" "sunlit kitchen, plants"
+# Premium video (default: kling-v3)
+cf auto video-t2v "drone shot over Tokyo at night, neon reflections"
 
-# Or a manual workflow
-python3 ~/.claude/skills/comfy-prompt/scripts/preflight.py flux-pro --download /tmp/out.png
-OUT=$(python3 ~/.claude/skills/comfy-prompt/scripts/organize.py path --model flux-pro --tag tests)
-comfy generate flux-pro --prompt "..." --download "$OUT"
+# Budget mode (downshift S→B everywhere in one shot)
+cf auto image "draft concept" --budget
+
+# Override tier explicitly
+cf auto image "..." --quality a            # Force A tier (flux-ultra)
+cf auto image "..." --quality b            # Force B tier (flux-pro)
+
+# Preview routing without spending
+cf tiers image                             # → nano-banana
+cf tiers image --quality b                 # → flux-pro
+cf tiers video-t2v                         # → kling --model_name kling-v3
+
+# Recipes — multi-step pipelines (all accept --quality and --budget)
+cf character "weathered space pilot in his late 30s"
+cf storyboard "lone bounty hunter" "Tokyo neon alley" "Blade Runner anamorphic"
+cf product 3angle "matte black coffee mug"
+cf product lifestyle "matte black coffee mug" --platform reel
+cf social hero.png "Nova Coffee"
+cf moodboard "cyberpunk neon detective in rain"
+cf thumbnail "AI agents replacing devs" "shocked face, bold red title"
+
+# Budget on a recipe
+cf character "test character" --budget     # all 4 angles use B tier
+
+# Manual model invocation (explicit)
+cf gen flux-ultra "cinematic hero shot" --platform wide
+cf vid seedance "drone shot at night" --platform tiktok --async
 ```
 
 ## How Claude uses this skill

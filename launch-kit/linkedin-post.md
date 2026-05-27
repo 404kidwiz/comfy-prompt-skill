@@ -1,6 +1,6 @@
-# LinkedIn Post — comfy-prompt v3.1.0 Launch
+# LinkedIn Post — comfy-prompt v3.2.0 Launch
 
-Updated 2026-05-26 for **launch-kit-v3** assets: generative-gallery aesthetic + 4-style variant pack.
+Updated 2026-05-26 for **launch-kit-v3** assets: generative-gallery aesthetic + 4-style variant pack. v3.2.0 ships **premium-first tier system** — every task auto-routes to highest-quality model by default. Pass `--budget` to downshift.
 
 ---
 

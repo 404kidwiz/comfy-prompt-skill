@@ -20,6 +20,8 @@ PLATFORM="square"
 MAX_RETRIES=1
 SKIP_ON_FAIL=0
 DRY_RUN=0
+QUALITY="s"
+BUDGET=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -27,6 +29,8 @@ while [[ $# -gt 0 ]]; do
         --dry-run)      DRY_RUN=1; shift ;;
         --retry)        MAX_RETRIES="$2"; shift 2 ;;
         --skip-on-fail) SKIP_ON_FAIL=1; shift ;;
+        --quality|-q)   QUALITY="$2"; shift 2 ;;
+        --budget)       BUDGET=1; shift ;;
         -*)             echo "unknown flag: $1" >&2; exit 1 ;;
         *)
             if [[ -z "$HERO" ]]; then HERO="$1"
@@ -37,7 +41,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$HERO" || -z "$BRAND" ]]; then
-    echo "usage: $0 <hero_image> \"brand/product name\" [--platform square|reel|wide]" >&2
+    echo "usage: $0 <hero_image> \"brand/product name\" [--quality s|a|b|c] [--budget] [--platform square|reel|wide]" >&2
     exit 1
 fi
 
@@ -60,6 +64,16 @@ SKILL_DIR="$HOME/.claude/skills/comfy-prompt"
 OUT_DIR="$(python3 "$SKILL_DIR/scripts/organize.py" path --tag social-pack | xargs dirname)"
 mkdir -p "$OUT_DIR"
 FAIL_LOG="$OUT_DIR/_failures.log"
+
+# Tier resolver
+TIER() {
+    local task="$1" q="${2:-$QUALITY}"
+    local b=""; [[ "$BUDGET" == "1" ]] && b="--budget"
+    python3 "$SKILL_DIR/scripts/tiers.py" "$task" --quality "$q" $b 2>/dev/null
+}
+
+BG_REMOVE_MODEL="$(TIER bg-remove)"
+BG_REPLACE_MODEL="$(TIER bg-replace)"
 
 # 4 social background scenes
 declare -a SCENES=(
@@ -100,16 +114,16 @@ echo "  Output: $OUT_DIR"
 echo ""
 
 CUTOUT="$OUT_DIR/00_cutout.png"
-run_step "Background remove (recraft-rmbg)" "~\$0.02" -- \
-    comfy generate recraft-rmbg --image "$HERO" --download "$CUTOUT" || { CUTOUT=""; }
+run_step "Background remove ($BG_REMOVE_MODEL)" "~\$0.02" -- \
+    comfy generate "$BG_REMOVE_MODEL" --image "$HERO" --download "$CUTOUT" || { CUTOUT=""; }
 
 if [[ -n "${CUTOUT:-}" && -f "$CUTOUT" ]]; then
     for i in "${!SCENES[@]}"; do
         n=$((i+1))
         tag="${TAGS[$i]}"
         scene="${SCENES[$i]}"
-        run_step "Scene $n/4: $tag" "~\$0.07" -- \
-            comfy generate recraft-replace-bg \
+        run_step "Scene $n/4: $tag ($BG_REPLACE_MODEL)" "~\$0.07" -- \
+            comfy generate "$BG_REPLACE_MODEL" \
                 --image "$CUTOUT" \
                 --prompt "$scene, $BRAND remains hero focus, sharp foreground, soft background blur, professional social media composition" \
                 --download "$OUT_DIR/0${n}_${tag}.png" || true

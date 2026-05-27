@@ -20,12 +20,16 @@ SCENE=""
 MAX_RETRIES=1
 SKIP_ON_FAIL=0
 DRY_RUN=0
+QUALITY="s"
+BUDGET=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)      DRY_RUN=1; shift ;;
         --retry)        MAX_RETRIES="$2"; shift 2 ;;
         --skip-on-fail) SKIP_ON_FAIL=1; shift ;;
+        --quality|-q)   QUALITY="$2"; shift 2 ;;
+        --budget)       BUDGET=1; shift ;;
         -*)             echo "unknown flag: $1" >&2; exit 1 ;;
         *)
             if [[ -z "$TOPIC" ]]; then  TOPIC="$1"
@@ -36,7 +40,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$TOPIC" || -z "$SCENE" ]]; then
-    echo "usage: $0 \"video topic\" \"scene description\" [--retry N] [--skip-on-fail]" >&2
+    echo "usage: $0 \"video topic\" \"scene description\" [--quality s|a|b|c] [--budget]" >&2
     exit 1
 fi
 
@@ -50,6 +54,16 @@ mkdir -p "$OUT_DIR"
 FAIL_LOG="$OUT_DIR/_failures.log"
 
 AF() { python3 "$SKILL_DIR/scripts/aspect_flags.py" "$@" 2>/dev/null; }
+
+# Thumbnails need text-rendering strength — route to image-text tier (Ideogram S, Gemini 3 Pro A)
+TIER() {
+    local task="$1" q="${2:-$QUALITY}"
+    local b=""; [[ "$BUDGET" == "1" ]] && b="--budget"
+    python3 "$SKILL_DIR/scripts/tiers.py" "$task" --quality "$q" $b 2>/dev/null
+}
+
+MODEL="$(TIER image-text)"
+MODEL_SUB="$(python3 "$SKILL_DIR/scripts/tiers.py" image-text --quality "$QUALITY" $([[ "$BUDGET" == "1" ]] && echo --budget) --sub-flags 2>/dev/null)"
 
 # Shared thumbnail design language
 STYLE="high-contrast colors, bold composition, eye-catching, sharp focal point, professional thumbnail design, vibrant saturation, clear focal subject filling 60% of frame, dramatic lighting"
@@ -84,21 +98,25 @@ echo ""
 
 PROMPT="thumbnail for video about $TOPIC, $SCENE, $STYLE"
 
-run_step "1/4: YouTube 16:9 thumbnail (1920×1080)" "~\$0.04" -- \
-    comfy generate flux-pro --prompt "$PROMPT, 16:9 widescreen composition" \
-        $(AF flux-pro 16:9) --download "$OUT_DIR/01_youtube_16x9.png"
+# shellcheck disable=SC2086
+run_step "1/4: YouTube 16:9 thumbnail ($MODEL)" "~\$0.08" -- \
+    comfy generate $MODEL $MODEL_SUB --prompt "$PROMPT, 16:9 widescreen composition" \
+        $(AF $MODEL 16:9) --download "$OUT_DIR/01_youtube_16x9.png"
 
-run_step "2/4: Square 1:1 variant (Instagram/podcast)" "~\$0.04" -- \
-    comfy generate flux-pro --prompt "$PROMPT, square composition, focal subject centered" \
-        $(AF flux-pro 1:1) --download "$OUT_DIR/02_square_1x1.png"
+# shellcheck disable=SC2086
+run_step "2/4: Square 1:1 variant ($MODEL)" "~\$0.08" -- \
+    comfy generate $MODEL $MODEL_SUB --prompt "$PROMPT, square composition, focal subject centered" \
+        $(AF $MODEL 1:1) --download "$OUT_DIR/02_square_1x1.png"
 
-run_step "3/4: Classic 4:3 (TV/podcast)" "~\$0.04" -- \
-    comfy generate flux-pro --prompt "$PROMPT, classic 4:3 composition" \
-        $(AF flux-pro 4:3) --download "$OUT_DIR/03_classic_4x3.png"
+# shellcheck disable=SC2086
+run_step "3/4: Classic 4:3 ($MODEL)" "~\$0.08" -- \
+    comfy generate $MODEL $MODEL_SUB --prompt "$PROMPT, classic 4:3 composition" \
+        $(AF $MODEL 4:3) --download "$OUT_DIR/03_classic_4x3.png"
 
-run_step "4/4: Vertical 9:16 (Shorts/TikTok cover)" "~\$0.04" -- \
-    comfy generate flux-pro --prompt "$PROMPT, vertical composition, hero subject tall" \
-        $(AF flux-pro 9:16) --download "$OUT_DIR/04_short_9x16.png"
+# shellcheck disable=SC2086
+run_step "4/4: Vertical 9:16 ($MODEL)" "~\$0.08" -- \
+    comfy generate $MODEL $MODEL_SUB --prompt "$PROMPT, vertical composition, hero subject tall" \
+        $(AF $MODEL 9:16) --download "$OUT_DIR/04_short_9x16.png"
 
 # Generate gallery
 python3 "$SKILL_DIR/scripts/gallery.py" "$OUT_DIR" 2>/dev/null && \

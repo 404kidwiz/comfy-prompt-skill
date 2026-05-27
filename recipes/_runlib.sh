@@ -19,10 +19,26 @@
 # AF must reference SKILL_DIR which the recipe sets
 AF() { python3 "$SKILL_DIR/scripts/aspect_flags.py" "$@" 2>/dev/null; }
 
+# TIER <task> [quality] [--budget] — resolve task → model name only
+# TIER_FLAGS <task> [quality] [--budget] — resolve → "model [--sub-flag value]"
+# Used by recipes to pick premium-first models.
+TIER() {
+    local task="$1" quality="${2:-s}" budget=""
+    [[ "${3:-}" == "--budget" || "${BUDGET:-0}" == "1" ]] && budget="--budget"
+    python3 "$SKILL_DIR/scripts/tiers.py" "$task" --quality "$quality" $budget 2>/dev/null
+}
+TIER_FLAGS() {
+    local task="$1" quality="${2:-s}" budget=""
+    [[ "${3:-}" == "--budget" || "${BUDGET:-0}" == "1" ]] && budget="--budget"
+    python3 "$SKILL_DIR/scripts/tiers.py" "$task" --quality "$quality" $budget --flags 2>/dev/null
+}
+
 # Default values if recipe didn't set them
 : "${MAX_RETRIES:=1}"
 : "${SKIP_ON_FAIL:=0}"
 : "${DRY_RUN:=0}"
+: "${BUDGET:=0}"
+: "${QUALITY:=s}"
 : "${FAIL_LOG:=/tmp/comfy-recipe-failures.log}"
 FAILED_STEPS=${FAILED_STEPS:-()}
 
@@ -82,10 +98,18 @@ run_step() {
     return 0
 }
 
-# Parse --dry-run from recipe args (recipes should call this in their arg-parsing loop)
+# Parse --dry-run / --budget / --quality from recipe args.
+# Recipes should call this in their arg-parsing loop:
+#   while [[ $# -gt 0 ]]; do
+#     if parse_runlib_flag "$1"; then shift; continue; fi
+#     case "$1" in ... esac
+#   done
 parse_runlib_flag() {
     case "$1" in
-        --dry-run) DRY_RUN=1; return 0 ;;
-        *)         return 1 ;;
+        --dry-run)  DRY_RUN=1; return 0 ;;
+        --budget)   BUDGET=1; return 0 ;;
+        --quality)  QUALITY="$2"; return 2 ;;   # 2 = consumed 2 args
+        -q)         QUALITY="$2"; return 2 ;;
+        *)          return 1 ;;
     esac
 }

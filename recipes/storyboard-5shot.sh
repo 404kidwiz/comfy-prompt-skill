@@ -29,6 +29,8 @@ PLATFORM="wide"
 MAX_RETRIES=1
 SKIP_ON_FAIL=0
 DRY_RUN=0
+QUALITY="s"
+BUDGET=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -36,6 +38,8 @@ while [[ $# -gt 0 ]]; do
         --dry-run)      DRY_RUN=1; shift ;;
         --retry)        MAX_RETRIES="$2"; shift 2 ;;
         --skip-on-fail) SKIP_ON_FAIL=1; shift ;;
+        --quality|-q)   QUALITY="$2"; shift 2 ;;
+        --budget)       BUDGET=1; shift ;;
         -*)             echo "unknown flag: $1" >&2; exit 1 ;;
         *)
             if [[ -z "$SUBJECT" ]]; then   SUBJECT="$1"
@@ -47,7 +51,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$SUBJECT" || -z "$LOCATION" || -z "$STYLE" ]]; then
-    echo "usage: $0 \"subject brief\" \"location\" \"style register\" [--platform wide|tiktok|square] [--retry N] [--skip-on-fail]" >&2
+    echo "usage: $0 \"subject brief\" \"location\" \"style register\" [--quality s|a|b|c] [--budget] [--platform wide|tiktok|square]" >&2
     exit 1
 fi
 
@@ -70,6 +74,19 @@ mkdir -p "$OUT_DIR"
 FAIL_LOG="$OUT_DIR/_failures.log"
 
 AF() { python3 "$SKILL_DIR/scripts/aspect_flags.py" "$@" 2>/dev/null; }
+
+# Tier resolver — premium first
+TIER() {
+    local task="$1" q="${2:-$QUALITY}"
+    local b=""; [[ "$BUDGET" == "1" ]] && b="--budget"
+    python3 "$SKILL_DIR/scripts/tiers.py" "$task" --quality "$q" $b 2>/dev/null
+}
+
+# All shots use premium hero model (S=gemini-3-pro via nano-banana)
+HERO_MODEL="$(TIER image)"
+HERO_SUB="$(python3 "$SKILL_DIR/scripts/tiers.py" image --quality "$QUALITY" $([[ "$BUDGET" == "1" ]] && echo --budget) --sub-flags 2>/dev/null)"
+# Detail insert can use B tier (faster, still high quality, saves spend)
+DETAIL_MODEL="$(TIER image b)"
 
 # Shared lighting register
 LIGHTING="dominant neon practicals, atmospheric haze, layered depth foreground to background, lens flares, slight chromatic aberration"
@@ -120,34 +137,38 @@ echo "  Aspect   : $ASPECT ($PLATFORM)"
 echo "  Output   : $OUT_DIR"
 echo ""
 
-run_step "Shot 1/5: EWS establishing (flux-pro)" "~\$0.04" -- \
-    comfy generate flux-pro \
+# shellcheck disable=SC2086
+run_step "Shot 1/5: EWS establishing ($HERO_MODEL)" "~\$0.15 (premium)" -- \
+    comfy generate $HERO_MODEL $HERO_SUB \
         --prompt "EWS bird's eye crane up of $LOCATION, atmospheric environment establishing $SUBJECT setting, no main character visible yet, $LIGHTING, $STYLE" \
-        $(AF flux-pro "$ASPECT") \
+        $(AF $HERO_MODEL "$ASPECT") \
         --download "$OUT_DIR/01_establish.png"
 
-run_step "Shot 2/5: MCU character intro (flux-pro)" "~\$0.04" -- \
-    comfy generate flux-pro \
+# shellcheck disable=SC2086
+run_step "Shot 2/5: MCU character intro ($HERO_MODEL)" "~\$0.15 (premium)" -- \
+    comfy generate $HERO_MODEL $HERO_SUB \
         --prompt "MCU low angle of $SUBJECT, $LOCATION background visible behind out-of-focus, hero stance, looking off-camera with focused gaze, $LIGHTING, $STYLE" \
-        $(AF flux-pro "$ASPECT") \
+        $(AF $HERO_MODEL "$ASPECT") \
         --download "$OUT_DIR/02_intro.png"
 
-run_step "Shot 3/5: ECU detail insert (nano-banana)" "~\$0.01" -- \
-    comfy generate nano-banana \
+run_step "Shot 3/5: ECU detail insert ($DETAIL_MODEL)" "~\$0.04" -- \
+    comfy generate "$DETAIL_MODEL" \
         --prompt "ECU rack focus of a single specific object the character is interacting with (hand, weapon, document, locket — pick contextually relevant for $SUBJECT), $LOCATION lighting bleeds into frame, $LIGHTING, $STYLE" \
-        $(AF nano-banana "$ASPECT") \
+        $(AF "$DETAIL_MODEL" "$ASPECT") \
         --download "$OUT_DIR/03_detail.png"
 
-run_step "Shot 4/5: MS action beat (flux-pro)" "~\$0.04" -- \
-    comfy generate flux-pro \
+# shellcheck disable=SC2086
+run_step "Shot 4/5: MS action beat ($HERO_MODEL)" "~\$0.15 (premium)" -- \
+    comfy generate $HERO_MODEL $HERO_SUB \
         --prompt "MS dutch angle of $SUBJECT mid-action — sudden movement, motion implied through pose, $LOCATION dynamic background, $LIGHTING with motion blur cue, $STYLE" \
-        $(AF flux-pro "$ASPECT") \
+        $(AF $HERO_MODEL "$ASPECT") \
         --download "$OUT_DIR/04_action.png"
 
-run_step "Shot 5/5: WS resolution (flux-pro)" "~\$0.04" -- \
-    comfy generate flux-pro \
+# shellcheck disable=SC2086
+run_step "Shot 5/5: WS resolution ($HERO_MODEL)" "~\$0.15 (premium)" -- \
+    comfy generate $HERO_MODEL $HERO_SUB \
         --prompt "WS eye level of $SUBJECT in $LOCATION, resolution beat, character standing still or walking away, emotional register of consequence, $LIGHTING, $STYLE" \
-        $(AF flux-pro "$ASPECT") \
+        $(AF $HERO_MODEL "$ASPECT") \
         --download "$OUT_DIR/05_resolution.png"
 
 # Optional grid composite

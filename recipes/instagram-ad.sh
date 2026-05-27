@@ -26,6 +26,8 @@ PLATFORM="reel"   # default: 9:16
 MAX_RETRIES=1
 SKIP_ON_FAIL=0
 DRY_RUN=0
+QUALITY="s"
+BUDGET=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -33,6 +35,8 @@ while [[ $# -gt 0 ]]; do
         --dry-run)      DRY_RUN=1; shift ;;
         --retry)    MAX_RETRIES="$2"; shift 2 ;;
         --skip-on-fail) SKIP_ON_FAIL=1; shift ;;
+        --quality|-q)   QUALITY="$2"; shift 2 ;;
+        --budget)       BUDGET=1; shift ;;
         -*)         echo "unknown flag: $1" >&2; exit 1 ;;
         *)
             if [[ -z "$PRODUCT" ]]; then   PRODUCT="$1"
@@ -43,7 +47,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$PRODUCT" || -z "$LIFESTYLE" ]]; then
-    echo "usage: $0 \"product description\" \"lifestyle background\" [--platform reel|tiktok|square] [--retry N] [--skip-on-fail]" >&2
+    echo "usage: $0 \"product description\" \"lifestyle background\" [--quality s|a|b|c] [--budget]" >&2
     exit 1
 fi
 
@@ -67,6 +71,22 @@ mkdir -p "$OUT_DIR"
 FAIL_LOG="$OUT_DIR/_failures.log"
 
 AF() { python3 "$SKILL_DIR/scripts/aspect_flags.py" "$@" 2>/dev/null; }
+
+# Tier resolver — premium first
+TIER() {
+    local task="$1" q="${2:-$QUALITY}"
+    local b=""; [[ "$BUDGET" == "1" ]] && b="--budget"
+    python3 "$SKILL_DIR/scripts/tiers.py" "$task" --quality "$q" $b 2>/dev/null
+}
+
+HERO_MODEL="$(TIER image)"
+HERO_SUB="$(python3 "$SKILL_DIR/scripts/tiers.py" image --quality "$QUALITY" $([[ "$BUDGET" == "1" ]] && echo --budget) --sub-flags 2>/dev/null)"
+BG_REMOVE_MODEL="$(TIER bg-remove)"
+BG_REPLACE_MODEL="$(TIER bg-replace)"
+UPSCALE_MODEL="$(TIER upscale)"
+# Video: premium = kling-v3 via kling-i2v, A = runway-i2v, B = vidu-i2v, C = pika-i2v
+VIDEO_MODEL="$(TIER video-i2v)"
+VIDEO_SUB="$(python3 "$SKILL_DIR/scripts/tiers.py" video-i2v --quality "$QUALITY" $([[ "$BUDGET" == "1" ]] && echo --budget) --sub-flags 2>/dev/null)"
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
 FAILED_STEPS=()
@@ -122,16 +142,17 @@ echo "  Output   : $OUT_DIR"
 echo ""
 
 HERO="$OUT_DIR/01_hero.png"
-run_step "Step 1/5: Hero on white seamless (flux-ultra)" "~\$0.10" -- \
-    comfy generate flux-ultra \
+# shellcheck disable=SC2086
+run_step "Step 1/5: Hero on white seamless ($HERO_MODEL)" "~\$0.15 (premium)" -- \
+    comfy generate $HERO_MODEL $HERO_SUB \
         --prompt "$PRODUCT on seamless white background, MCU static locked-off camera, soft overhead key with even fill, catalog photography, ultra-sharp, color-accurate, deep blacks, no environmental clutter, photoreal" \
-        $(AF flux-ultra 1:1) \
+        $(AF $HERO_MODEL 1:1) \
         --download "$HERO" || { HERO=""; }
 
 CUTOUT="$OUT_DIR/02_cutout.png"
 if [[ -n "${HERO:-}" && -f "$HERO" ]]; then
-    run_step "Step 2/5: Background remove (recraft-rmbg)" "~\$0.02" -- \
-        comfy generate recraft-rmbg --image "$HERO" --download "$CUTOUT" || { CUTOUT=""; }
+    run_step "Step 2/5: Background remove ($BG_REMOVE_MODEL)" "~\$0.02" -- \
+        comfy generate "$BG_REMOVE_MODEL" --image "$HERO" --download "$CUTOUT" || { CUTOUT=""; }
 else
     echo "  ⏭  Step 2 skipped — hero not available"
     CUTOUT=""
@@ -139,8 +160,8 @@ fi
 
 LIFESTYLE_IMG="$OUT_DIR/03_lifestyle.png"
 if [[ -n "${CUTOUT:-}" && -f "$CUTOUT" ]]; then
-    run_step "Step 3/5: Lifestyle background (recraft-replace-bg)" "~\$0.07" -- \
-        comfy generate recraft-replace-bg \
+    run_step "Step 3/5: Lifestyle background ($BG_REPLACE_MODEL)" "~\$0.07" -- \
+        comfy generate "$BG_REPLACE_MODEL" \
             --image "$CUTOUT" \
             --prompt "$LIFESTYLE, soft natural light, keep product lighting consistent with new environment" \
             --download "$LIFESTYLE_IMG" || { LIFESTYLE_IMG=""; }
@@ -152,8 +173,8 @@ fi
 UPSCALED="$OUT_DIR/04_4k.png"
 INPUT_FOR_UPSCALE="${LIFESTYLE_IMG:-${HERO:-}}"
 if [[ -n "${INPUT_FOR_UPSCALE:-}" && -f "$INPUT_FOR_UPSCALE" ]]; then
-    run_step "Step 4/5: Upscale to 4K (stability-upscale-fast)" "~\$0.05" -- \
-        comfy generate stability-upscale-fast --image "$INPUT_FOR_UPSCALE" --download "$UPSCALED" || { UPSCALED=""; }
+    run_step "Step 4/5: Upscale to 4K ($UPSCALE_MODEL)" "~\$0.05" -- \
+        comfy generate "$UPSCALE_MODEL" --image "$INPUT_FOR_UPSCALE" --download "$UPSCALED" || { UPSCALED=""; }
 else
     echo "  ⏭  Step 4 skipped — no input image available"
     UPSCALED=""
@@ -162,13 +183,12 @@ fi
 INPUT_FOR_ANIM="${UPSCALED:-${LIFESTYLE_IMG:-${HERO:-}}}"
 if [[ -n "${INPUT_FOR_ANIM:-}" && -f "$INPUT_FOR_ANIM" ]]; then
     # Async submission — no retry (would duplicate jobs); just log and continue
-    echo "▶ Step 5/5: Animate vertical clip (pika-i2v, async)  (est. ~\$0.40)"
-    # pika-i2v has no aspect flag — inherits from source image
-    ANIMATE_JSON=$(comfy generate pika-i2v \
+    echo "▶ Step 5/5: Animate vertical clip ($VIDEO_MODEL, async)  (est. ~\$0.45-0.60)"
+    # shellcheck disable=SC2086
+    ANIMATE_JSON=$(comfy generate $VIDEO_MODEL $VIDEO_SUB \
         --image "$INPUT_FOR_ANIM" \
         --prompt "subtle camera dolly in over 5 seconds, steam rising from product, background elements drifting gently in soft breeze, hero product stays still and sharp" \
         --duration 5 \
-        --resolution 1080p \
         --async --json 2>&1) || true
 
     JOB_ID=$(echo "$ANIMATE_JSON" | python3 -c "
@@ -179,12 +199,12 @@ print(m.group(1) if m else '')
 " 2>/dev/null || echo "")
 
     if [[ -n "${JOB_ID:-}" ]]; then
-        python3 "$SKILL_DIR/scripts/jobs.py" log pika-i2v "$JOB_ID" \
+        python3 "$SKILL_DIR/scripts/jobs.py" log "$VIDEO_MODEL" "$JOB_ID" \
             --prompt "$PRODUCT lifestyle ad animation" --note "instagram-ad recipe"
         echo "  ✓ async job logged: $JOB_ID"
-        echo "  resume: comfy generate resume pika-i2v $JOB_ID --download $OUT_DIR/05_animated.mp4"
+        echo "  resume: comfy generate resume $VIDEO_MODEL $JOB_ID --download $OUT_DIR/05_animated.mp4"
     else
-        echo "  ⚠  Step 5/5 — could not parse job_id, check pika-i2v output above manually" >&2
+        echo "  ⚠  Step 5/5 — could not parse job_id, check $VIDEO_MODEL output above manually" >&2
         FAILED_STEPS+=("Step 5/5: job_id not captured")
     fi
 else

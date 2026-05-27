@@ -4,6 +4,35 @@ All notable changes to this skill. Follows Keep a Changelog conventions.
 
 ---
 
+## [3.2.0] — 2026-05-26 (premium-first tier system)
+
+### Added
+- **`scripts/tiers.py`** — premium-first model tier resolver (S/A/B/C) per task type. Single source of truth for which model to pick. Resolver: `pick(task, quality, budget)`. Supports image, image-edit, image-text, illustration, inpaint, outpaint, video-t2v, video-i2v, upscale, bg-remove, bg-replace, vectorize.
+- **`cf auto <task> <prompt>`** — tier-aware top-level command. Auto-routes to S-tier model for the task. Accepts `--quality s|a|b|c` and `--budget`.
+- **`cf tiers <task>`** — preview tier resolution without spending. Pass `--budget` or `--quality` to compare.
+- **`--quality` and `--budget` flags on all 8 recipes** — character-sheet, storyboard-5shot, mood-board, thumbnail-set, product-3angle, product-lifestyle, instagram-ad, social-pack. Default tier S (premium). `--budget` downshifts S→B globally for the run.
+- **`bin/cf`** — `cf` wrapper now ships with the skill. Install: `ln -sf ~/.claude/skills/comfy-prompt/bin/cf ~/.local/bin/cf`.
+
+### Changed
+- **`scripts/jobs.py` COST_TIERS** — refreshed with 62 models. New entries: `gemini-3-pro-image-preview` ($0.15), `kling-v1` through `kling-v3` ($0.20–$0.60), `hailuo` ($0.30), `luma`/`luma-i2v` ($0.40–$0.45), `moonvalley-t2v`/`moonvalley-i2v` ($0.40), `ideogram-bg`/`ideogram-reframe`/`ideogram-remix`. Corrected stale prices on `flux-2` ($0.06), `reve` ($0.10), `stability-upscale-creative` ($0.15).
+- **`model-guide.md`** — rewritten tier-first. Quick resolution table per task, full inventory tables with tier badges, premium-first decision flow.
+- **`SKILL.md`** — Fast Path defaults updated to premium-first. Route-to-model section rebuilt as tier table (S/A/B/C × 12 task types).
+- **`README.md`** — install instructions for `cf` symlink, premium-first quick-start examples, tier system explanation.
+
+### Premium defaults (S tier)
+- Image → `nano-banana --model gemini-3-pro-image-preview` (Gemini 3 Pro)
+- Image-text → `ideogram` (strongest text rendering)
+- Image-edit → `flux-kontext-max`
+- Video text-to-video → `kling --model_name kling-v3`
+- Video image-to-video → `kling-i2v --model_name kling-v3`
+- Inpaint/outpaint → `flux-fill` / `flux-expand`
+- Upscale → `recraft-upscale-creative`
+
+### Compatibility
+- Existing `cf gen <model>`, `cf vid <model>`, all recipe calls without `--quality`/`--budget` still work. Default tier S applies; nothing breaks.
+
+---
+
 ## [3.1.0] — 2026-05-26 (production hardening)
 
 ### Added

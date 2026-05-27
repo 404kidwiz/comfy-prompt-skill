@@ -47,53 +47,87 @@ from typing import Any
 
 REGISTRY = Path.home() / ".comfy-jobs.json"
 
-# Cost tier estimates in USD per generation
-# Source: comfy-prompt/model-guide.md cost tiers
+# Cost tier estimates in USD per generation.
+# Premium-first tier philosophy:
+#   S — best-in-class quality (premium default)
+#   A — strong premium (~70% S quality, ~50% S cost)
+#   B — solid mid (reliable, fast)
+#   C — bargain (drafts, iteration)
+# Source: comfy-prompt/model-guide.md
 COST_TIERS: dict[str, float] = {
-    # Free / near-free
-    "nano-banana": 0.01,
-    # Tier 1 — $0.01–0.05
-    "flux-2": 0.02,
-    "flux-pro": 0.04,
+    # ── Tier C: $0.01–0.03 (cheap, draft work) ────────────────────────
+    "nano-banana": 0.01,                  # gemini-2.5-flash-image default
     "recraft": 0.03,
-    "recraft-i2i": 0.04,
     "recraft-rmbg": 0.02,
     "recraft-vectorize": 0.03,
     "recraft-upscale": 0.02,
+    "stability-sd3": 0.03,
+
+    # ── Tier B: $0.03–0.08 (solid mid) ────────────────────────────────
+    "flux-2": 0.06,                       # BFL Flux 2 Pro
+    "flux-pro": 0.04,                     # BFL Flux Pro 1.1
+    "recraft-i2i": 0.04,
     "ideogram": 0.04,
     "ideogram-edit": 0.05,
-    "stability-sd3": 0.03,
-    # Tier 2 — $0.05–0.15
-    "flux-ultra": 0.10,
-    "flux-kontext": 0.08,
-    "flux-kontext-max": 0.12,
+    "ideogram-bg": 0.04,
+    "ideogram-reframe": 0.04,
+    "ideogram-remix": 0.05,
+    "stability-upscale-fast": 0.05,
     "flux-canny": 0.06,
     "flux-depth": 0.06,
     "flux-fill": 0.06,
     "flux-expand": 0.06,
-    "stability-ultra": 0.10,
-    "stability-upscale": 0.08,
-    "stability-upscale-fast": 0.05,
-    "dalle": 0.08,
-    "dalle-edit": 0.10,
     "recraft-inpaint": 0.07,
     "recraft-replace-bg": 0.07,
-    # Tier 3 — $0.10–0.30
-    "grok": 0.12,
-    "grok-edit": 0.15,
+    "dalle": 0.08,
+    "stability-upscale": 0.08,
+    "flux-kontext": 0.08,
+
+    # ── Tier A: $0.10–0.15 (high premium) ─────────────────────────────
+    "flux-ultra": 0.10,                   # BFL Flux Pro 1.1 Ultra
+    "stability-ultra": 0.10,
     "reve": 0.10,
+    "dalle-edit": 0.10,
+    "grok": 0.12,
+    "flux-kontext-max": 0.12,
     "reve-edit": 0.12,
-    # Tier 4 — $0.20–0.60 (video)
-    "pika": 0.30,
-    "pika-i2v": 0.40,
-    "runway": 0.35,
-    "runway-i2v": 0.45,
+    "grok-edit": 0.15,
+    "nano-banana:gemini-3-pro-image-preview": 0.15,  # Gemini 3 Pro premium variant
+    "stability-upscale-creative": 0.15,
+    "recraft-upscale-creative": 0.15,
+
+    # ── Tier B video: $0.20–0.30 (entry video) ────────────────────────
+    "kling": 0.20,                        # kling-v1 baseline
+    "kling-v1": 0.20,
+    "kling-v1-5": 0.25,
+    "kling-v1-6": 0.30,
     "vidu": 0.30,
-    "vidu-i2v": 0.40,
     "vidu-extend": 0.25,
+    "pika": 0.30,
+    "hailuo": 0.30,
+
+    # ── Tier A video: $0.30–0.45 (cinematic) ──────────────────────────
+    "runway": 0.35,
+    "vidu-i2v": 0.40,
+    "moonvalley-t2v": 0.40,
+    "moonvalley-i2v": 0.40,
+    "pika-i2v": 0.40,
+    "luma": 0.40,
+    "luma-i2v": 0.45,
+    "runway-i2v": 0.45,
+    "kling-v2-master": 0.45,
+    "kling-v2-1": 0.45,
+    "kling-v2-1-master": 0.50,
+    "kling-v2-5-turbo": 0.40,
+    "kling-v2-6": 0.55,
+    "kling-lipsync": 0.50,
+    "kling-extend": 0.30,
+    "kling-i2v": 0.45,
+
+    # ── Tier S video: $0.50–0.75 (top-shelf) ──────────────────────────
     "grok-video": 0.50,
-    # Tier 5 — $0.50–1.50 (premium video)
-    "seedance": 0.60,
+    "seedance": 0.60,                     # ByteDance Seedance
+    "kling-v3": 0.60,                     # Kling v3 (latest)
 }
 
 DEFAULT_COST = 0.05  # fallback if model not in table

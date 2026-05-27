@@ -1,6 +1,6 @@
-# X Thread — comfy-prompt v3.1.0
+# X Thread — comfy-prompt v3.2.0
 
-Updated 2026-05-26 for **launch-kit-v3** assets: generative-gallery aesthetic + 4-style variant pack.
+Updated 2026-05-26 for **launch-kit-v3** assets: generative-gallery aesthetic + 4-style variant pack. v3.2.0 ships **premium-first tier system**.
 
 12-tweet thread (8 core + 4 variant showcase). Each ≤ 280 chars. Numbers shown for ordering.
 
@@ -9,11 +9,11 @@ Updated 2026-05-26 for **launch-kit-v3** assets: generative-gallery aesthetic + 
 ## Thread
 
 **1/**
-Shipped v3.1.0 of comfy-prompt today.
+Shipped v3.2.0 of comfy-prompt today.
 
-A Claude Code skill that turns Comfy Cloud — Flux, Seedance, Pika, Runway, DALL-E, Ideogram, nano-banana, 30+ models — into one structured workflow.
+A Claude Code skill that turns Comfy Cloud — Flux, Kling v3, Gemini 3 Pro, Seedance, Hailuo, Ideogram, 50+ models — into one premium-first workflow.
 
-20 slash commands. 13 scripts. 8 recipes. 38 tests.
+`cf auto image "..."` → routes to Gemini 3 Pro. Pass `--budget` to downshift.
 
 🧵👇
 

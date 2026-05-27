@@ -22,19 +22,23 @@ DESC=""
 MAX_RETRIES=1
 SKIP_ON_FAIL=0
 DRY_RUN=0
+QUALITY="s"     # premium default
+BUDGET=0        # set to 1 via --budget to downshift S→B
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)      DRY_RUN=1; shift ;;
         --retry)        MAX_RETRIES="$2"; shift 2 ;;
         --skip-on-fail) SKIP_ON_FAIL=1; shift ;;
+        --quality|-q)   QUALITY="$2"; shift 2 ;;
+        --budget)       BUDGET=1; shift ;;
         -*)             echo "unknown flag: $1" >&2; exit 1 ;;
         *)              DESC="$1"; shift ;;
     esac
 done
 
 if [[ -z "$DESC" ]]; then
-    echo "usage: $0 \"character description\" [--retry N] [--skip-on-fail]" >&2
+    echo "usage: $0 \"character description\" [--quality s|a|b|c] [--budget] [--retry N] [--skip-on-fail]" >&2
     exit 1
 fi
 
@@ -51,6 +55,18 @@ FAIL_LOG="$OUT_DIR/_failures.log"
 
 # Helper: translate (model, aspect) → correct CLI flags for that model
 AF() { python3 "$SKILL_DIR/scripts/aspect_flags.py" "$@" 2>/dev/null; }
+
+# Tier resolver — premium first (S = Gemini 3 Pro / Flux Ultra)
+TIER() {
+    local task="$1" q="${2:-$QUALITY}"
+    local b=""; [[ "$BUDGET" == "1" ]] && b="--budget"
+    python3 "$SKILL_DIR/scripts/tiers.py" "$task" --quality "$q" $b 2>/dev/null
+}
+
+# Resolve premium-first models for this pipeline
+HERO_MODEL="$(TIER image)"
+EDIT_MODEL="$(TIER image-edit)"
+HERO_SUB="$(python3 "$SKILL_DIR/scripts/tiers.py" image --quality "$QUALITY" $([[ "$BUDGET" == "1" ]] && echo --budget) --sub-flags 2>/dev/null)"
 
 # Shared lighting + style register — applied to all four angles for consistency
 LIGHTING="single hard side-key from camera-right with deep chiaroscuro shadow on opposite half of face, cool blue ambient fill from above, photoreal skin texture"
@@ -100,16 +116,17 @@ echo "  Output   : $OUT_DIR"
 echo ""
 
 HERO="$OUT_DIR/01_front.png"
-run_step "1/4: Hero front 3/4 (flux-pro)" "~\$0.04" -- \
-    comfy generate flux-pro \
+# shellcheck disable=SC2086
+run_step "1/4: Hero front 3/4 ($HERO_MODEL)" "~\$0.15 (premium)" -- \
+    comfy generate $HERO_MODEL $HERO_SUB \
         --prompt "MCU eye level front three-quarter angle of $DESC, looking just past camera, $LIGHTING, $STYLE" \
-        $(AF flux-pro 3:4) \
+        $(AF $HERO_MODEL 3:4) \
         --download "$HERO" || { HERO=""; }
 
 LEFT="$OUT_DIR/02_left.png"
 if [[ -n "${HERO:-}" && -f "$HERO" ]]; then
-    run_step "2/4: Profile left (flux-kontext)" "~\$0.08" -- \
-        comfy generate flux-kontext \
+    run_step "2/4: Profile left ($EDIT_MODEL)" "~\$0.12" -- \
+        comfy generate "$EDIT_MODEL" \
             --image "$HERO" \
             --prompt "same character, same wardrobe, same hair, same age and features, now in pure profile facing camera-left, same $LIGHTING, same $STYLE, identity locked" \
             --download "$LEFT" || { LEFT=""; }
@@ -119,8 +136,8 @@ fi
 
 RIGHT="$OUT_DIR/03_right.png"
 if [[ -n "${HERO:-}" && -f "$HERO" ]]; then
-    run_step "3/4: Profile right (flux-kontext)" "~\$0.08" -- \
-        comfy generate flux-kontext \
+    run_step "3/4: Profile right ($EDIT_MODEL)" "~\$0.12" -- \
+        comfy generate "$EDIT_MODEL" \
             --image "$HERO" \
             --prompt "same character, same wardrobe, same hair, same age and features, now in pure profile facing camera-right, same $LIGHTING, same $STYLE, identity locked" \
             --download "$RIGHT" || { RIGHT=""; }
@@ -130,8 +147,8 @@ fi
 
 BACK="$OUT_DIR/04_back.png"
 if [[ -n "${HERO:-}" && -f "$HERO" ]]; then
-    run_step "4/4: Three-quarter back (flux-kontext)" "~\$0.08" -- \
-        comfy generate flux-kontext \
+    run_step "4/4: Three-quarter back ($EDIT_MODEL)" "~\$0.12" -- \
+        comfy generate "$EDIT_MODEL" \
             --image "$HERO" \
             --prompt "same character, same wardrobe, same hair, same age and features, now in three-quarter back view facing away from camera at slight angle so jaw is just visible, same $LIGHTING, same $STYLE, identity locked" \
             --download "$BACK" || { BACK=""; }

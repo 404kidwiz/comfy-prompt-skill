@@ -1,71 +1,223 @@
-# Comfy Model Guide — Cloud + Local
+# Comfy Model Guide — Premium-First (v3.2.0)
 
-All cloud models accessed via `comfy generate <model>` with `COMFY_API_KEY` set.
-All local models accessed via `comfy run --workflow <path>` after `comfy launch --background`.
+All cloud models via `comfy generate <model>` with `COMFY_API_KEY` set.
+All local models via `comfy run --workflow <path>` after `comfy launch --background`.
+
+**Philosophy:** premium quality is the default. Budget mode is opt-in via `--budget`.
 
 ---
 
-## Cloud Image Models — Head to Head
+## The Tier System
 
-| Model | Partner | Quality | Faces | Style range | Text | Speed | Best for |
-|-------|---------|---------|-------|-------------|------|-------|----------|
-| `flux-2` | BFL | ★★★★★ | ★★★★☆ | ★★★★☆ | ★★★☆☆ | ★★★☆☆ | Latest Flux, max fidelity |
-| `flux-pro` | BFL | ★★★★★ | ★★★★☆ | ★★★★☆ | ★★★☆☆ | ★★★☆☆ | Cinematic, photoreal |
-| `flux-ultra` | BFL | ★★★★★ | ★★★★☆ | ★★★★☆ | ★★★☆☆ | ★★☆☆☆ | Ultra-HD, hero shots |
-| `nano-banana` | Google | ★★★★★ | ★★★★☆ | ★★★★★ | ★★★★★ | ★★★★★ | Versatile, text rendering, fast |
-| `dalle` | OpenAI | ★★★★☆ | ★★★☆☆ | ★★★★☆ | ★★★★★ | ★★★★☆ | Text-in-image, instruction following |
-| `stability-sd3` | Stability | ★★★★☆ | ★★★★☆ | ★★★★★ | ★★★★☆ | ★★★★☆ | SD3.5 — wide style range |
-| `stability-ultra` | Stability | ★★★★★ | ★★★★☆ | ★★★★☆ | ★★★☆☆ | ★★★☆☆ | Stable Image Ultra |
-| `ideogram` | Ideogram | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★★★ | ★★★★☆ | Strongest text rendering |
-| `grok` | xAI | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★☆☆ | ★★★★☆ | Grok Imagine — versatile |
-| `recraft` | Recraft | ★★★★☆ | ★★★☆☆ | ★★★★★ | ★★★★☆ | ★★★★☆ | Illustration, vector-style |
-| `reve` | Reve | ★★★★☆ | ★★★★☆ | ★★★★☆ | ★★★☆☆ | ★★★★☆ | General purpose |
-| `runway` | Runway | ★★★★☆ | ★★★☆☆ | ★★★★☆ | ★★★☆☆ | ★★★★☆ | Quick concept |
+Every task routes through a 4-tier ladder. Pick by task, not by model name.
 
-## Cloud Image-Edit Models
+| Tier | Quality | When to use |
+|------|---------|-------------|
+| **S** | Best-in-class. No compromise. | Hero shots, client deliverables, finals, anything user will see. |
+| **A** | Strong premium. ~70% S quality, ~50% S cost. | High-volume premium work (bulk of finals). |
+| **B** | Solid mid. Reliable, fast, cheap. | Internal review, mood boards, drafts that survive. |
+| **C** | Bargain. | Iteration, throwaway tests, experimental prompts. |
 
-| Model | Purpose | Input | Speed |
-|-------|---------|-------|-------|
-| `flux-kontext` | High-quality edit | image + prompt | ★★★☆☆ |
-| `flux-kontext-max` | Max-quality edit (slower) | image + prompt | ★★☆☆☆ |
-| `flux-canny` | ControlNet from edge | canny edge image | ★★★☆☆ |
-| `flux-depth` | ControlNet from depth | depth image | ★★★☆☆ |
-| `flux-fill` | Inpaint | image + mask | ★★★☆☆ |
-| `flux-expand` | Outpaint | image | ★★★☆☆ |
-| `dalle-edit` | OpenAI image edit | image + prompt | ★★★★☆ |
-| `ideogram-edit` | Ideogram edit | image + prompt | ★★★★☆ |
-| `grok-edit` | Grok image edit | image + prompt | ★★★★☆ |
-| `nano-banana` | Gemini Flash Image edit | image + prompt | ★★★★★ |
-| `recraft-i2i` | Image-to-image | image + prompt | ★★★★☆ |
-| `recraft-inpaint` | Recraft inpaint | image + mask | ★★★★☆ |
-| `reve-edit` | Reve edit | image + prompt | ★★★★☆ |
+**Default tier is S.** Pass `--budget` to downshift S→B everywhere in one shot.
 
-## Cloud Specialty Models
+---
 
-| Model | Purpose |
-|-------|---------|
-| `recraft-rmbg` | Background remove |
-| `recraft-replace-bg` | Replace background |
-| `recraft-vectorize` | Vectorize to SVG |
-| `recraft-upscale` | Standard upscale |
-| `recraft-upscale-creative` | Creative upscale |
-| `stability-upscale` | Conservative upscale |
-| `stability-upscale-creative` | Creative upscale (async) |
-| `stability-upscale-fast` | Fast upscale |
+## Quick Resolution Table
 
-## Cloud Video Models
+What you ask for → what runs.
 
-| Model | Partner | Motion | Realism | Duration | Audio | Mode | Best for |
-|-------|---------|--------|---------|----------|-------|------|----------|
-| `seedance` | ByteDance | ★★★★★ | ★★★★☆ | 3-12s | ✅ | async | T2V + I2V, complex motion |
-| `pika` | Pika | ★★★★☆ | ★★★☆☆ | 5s | — | async | T2V, clean motion |
-| `pika-i2v` | Pika | ★★★★☆ | ★★★☆☆ | 5s | — | async | I2V, social clips |
-| `runway` | Runway | ★★★☆☆ | ★★★☆☆ | — | — | sync | Quick concept |
-| `runway-i2v` | Runway | ★★★★☆ | ★★★★☆ | — | — | async | I2V, hero shots |
-| `vidu` | Vidu | ★★★★☆ | ★★★☆☆ | — | — | async | T2V general |
-| `vidu-i2v` | Vidu | ★★★★☆ | ★★★☆☆ | — | — | async | I2V general |
-| `vidu-extend` | Vidu | ★★★★☆ | ★★★☆☆ | — | — | async | Extend existing video |
-| `grok-video` | xAI | ★★★★☆ | ★★★★☆ | — | — | async | T2V via Grok Imagine |
+### Image (text-to-image)
+
+| Tier | Model | Cost | Notes |
+|------|-------|------|-------|
+| **S** | `nano-banana --model gemini-3-pro-image-preview` | $0.15 | Gemini 3 Pro — premium |
+| A | `flux-ultra` | $0.10 | BFL Flux Pro 1.1 Ultra — top BFL |
+| B | `flux-pro` | $0.04 | BFL Flux Pro 1.1 — fast cinematic |
+| C | `nano-banana` (Gemini 2.5 Flash) | $0.01 | Cheapest reliable |
+
+### Image with text (poster, sign, label)
+
+| Tier | Model | Cost | Notes |
+|------|-------|------|-------|
+| **S** | `ideogram` | $0.04 | Strongest text rendering in image |
+| A | `nano-banana --model gemini-3-pro-image-preview` | $0.15 | Premium text |
+| B | `dalle` | $0.08 | OpenAI — solid for text |
+| C | `nano-banana` (Gemini 2.5 Flash) | $0.01 | Cheapest |
+
+### Image edit
+
+| Tier | Model | Cost | Notes |
+|------|-------|------|-------|
+| **S** | `flux-kontext-max` | $0.12 | Max-quality edit |
+| A | `flux-kontext` | $0.08 | Pro edit |
+| B | `nano-banana` (Gemini 2.5 Flash) | $0.01 | Fast Gemini edit |
+| C | `recraft-i2i` | $0.04 | Cheap image-to-image |
+
+### Inpaint / Outpaint / Background
+
+| Task | Tier S model | Notes |
+|------|-------------|-------|
+| Inpaint | `flux-fill` | Mask-driven edit |
+| Outpaint | `flux-expand` | Extend any side |
+| Background remove | `recraft-rmbg` | Best in class |
+| Background replace | `recraft-replace-bg` | (S+A) — `ideogram-bg` at B |
+
+### Illustration / vector-style
+
+| Tier | Model | Cost | Notes |
+|------|-------|------|-------|
+| **S** | `recraft` | $0.03 | Illustration / vector king |
+| A | `ideogram` | $0.04 | Versatile |
+| B | `stability-sd3` | $0.03 | Wide style range |
+| C | `recraft` | $0.03 | Default |
+
+### Video (text-to-video)
+
+| Tier | Model | Cost | Notes |
+|------|-------|------|-------|
+| **S** | `kling --model_name kling-v3` | $0.60 | Kling v3 (latest, top quality) |
+| A | `seedance` | $0.60 | ByteDance — cinematic motion |
+| B | `hailuo` | $0.30 | MiniMax — fast, solid |
+| C | `pika` | $0.30 | Cheapest reliable |
+
+### Video (image-to-video)
+
+| Tier | Model | Cost | Notes |
+|------|-------|------|-------|
+| **S** | `kling-i2v --model_name kling-v3` | $0.60 | Premium I2V |
+| A | `runway-i2v` | $0.45 | Cinematic |
+| B | `vidu-i2v` | $0.40 | Solid mid |
+| C | `pika-i2v` | $0.40 | Cheapest |
+
+### Upscale
+
+| Tier | Model | Cost | Notes |
+|------|-------|------|-------|
+| **S** | `recraft-upscale-creative` | $0.15 | Creative upscale, slow |
+| A | `stability-upscale-creative` | $0.15 | Stability creative |
+| B | `recraft-upscale` | $0.02 | Standard |
+| C | `stability-upscale-fast` | $0.05 | Fast |
+
+---
+
+## Using the Tier Resolver
+
+### From shell — `cf auto`
+
+```bash
+cf auto image "cinematic hero shot of a coffee mug" --platform wide
+# → routes to nano-banana --model gemini-3-pro-image-preview (S tier)
+
+cf auto image "draft concept" --quality b
+# → routes to flux-pro
+
+cf auto image "hero shot" --budget
+# → downshifts S→B → flux-pro
+
+cf auto video-t2v "drone shot over Tokyo at night, 10 seconds"
+# → kling --model_name kling-v3
+
+cf auto video-i2v "subtle camera dolly in over 5 seconds" --image hero.png --budget
+# → vidu-i2v (downshifted from kling-v3)
+```
+
+### From Python
+
+```python
+import sys
+sys.path.insert(0, "scripts")
+from tiers import pick
+
+p = pick("image")                      # default S
+# → Pick(model='nano-banana', sub_model='gemini-3-pro-image-preview', sub_flag='--model', quality='s', task='image')
+
+p = pick("video-t2v", quality="a")     # tier A explicit
+# → Pick(model='seedance', sub_model=None, sub_flag=None, quality='a', task='video-t2v')
+
+p = pick("image", budget=True)         # downshift
+# → Pick(model='flux-pro', sub_model=None, sub_flag=None, quality='b', task='image')
+```
+
+### From recipe script
+
+```bash
+# After sourcing/defining QUALITY and BUDGET vars
+MODEL="$(TIER image)"
+SUB_FLAGS="$(python3 "$SKILL_DIR/scripts/tiers.py" image --sub-flags)"
+
+# shellcheck disable=SC2086
+comfy generate $MODEL $SUB_FLAGS --prompt "..." --download out.png
+```
+
+---
+
+## All Cloud Image Models (full inventory)
+
+| Model | Partner | Type | Tier | Cost |
+|-------|---------|------|------|------|
+| `flux-2` | BFL | text-to-image | B | $0.06 |
+| `flux-pro` | BFL | text-to-image | B | $0.04 |
+| `flux-ultra` | BFL | text-to-image | A | $0.10 |
+| `flux-kontext` | BFL | image-edit | A | $0.08 |
+| `flux-kontext-max` | BFL | image-edit | S | $0.12 |
+| `flux-canny` | BFL | controlnet | — | $0.06 |
+| `flux-depth` | BFL | controlnet | — | $0.06 |
+| `flux-fill` | BFL | inpaint | S | $0.06 |
+| `flux-expand` | BFL | outpaint | S | $0.06 |
+| `nano-banana` | Google | image + edit | C-S | $0.01-0.15 |
+| └ `--model gemini-2.5-flash-image` | | | C | $0.01 |
+| └ `--model gemini-3-pro-image-preview` | | | S | $0.15 |
+| `dalle` | OpenAI | text-to-image | B | $0.08 |
+| `dalle-edit` | OpenAI | image-edit | A | $0.10 |
+| `ideogram` | Ideogram | text + text-in-image | S | $0.04 |
+| `ideogram-edit` | Ideogram | image-edit | — | $0.05 |
+| `ideogram-bg` | Ideogram | bg-replace | B | $0.04 |
+| `ideogram-reframe` | Ideogram | image-edit | — | $0.04 |
+| `ideogram-remix` | Ideogram | image-edit | — | $0.05 |
+| `stability-sd3` | Stability | text-to-image | B | $0.03 |
+| `stability-ultra` | Stability | text-to-image | A | $0.10 |
+| `grok` | xAI | text-to-image | A | $0.12 |
+| `grok-edit` | xAI | image-edit | — | $0.15 |
+| `reve` | Reve | text-to-image | A | $0.10 |
+| `reve-edit` | Reve | image-edit | — | $0.12 |
+| `recraft` | Recraft | text-to-image | S (illust.) | $0.03 |
+| `recraft-i2i` | Recraft | image-to-image | C | $0.04 |
+| `recraft-inpaint` | Recraft | inpaint | B | $0.07 |
+| `recraft-rmbg` | Recraft | bg-remove | S | $0.02 |
+| `recraft-replace-bg` | Recraft | bg-replace | S | $0.07 |
+| `recraft-vectorize` | Recraft | vectorize | S | $0.03 |
+| `recraft-upscale` | Recraft | upscale | B | $0.02 |
+| `recraft-upscale-creative` | Recraft | upscale | S | $0.15 |
+| `stability-upscale` | Stability | upscale | B | $0.08 |
+| `stability-upscale-fast` | Stability | upscale | C | $0.05 |
+| `stability-upscale-creative` | Stability | upscale | A | $0.15 |
+
+## All Cloud Video Models
+
+| Model | Partner | Type | Tier | Cost |
+|-------|---------|------|------|------|
+| `kling` | Kling | text-to-video | S/B | $0.20-0.60 |
+| └ `--model_name kling-v3` | | | S | $0.60 |
+| └ `--model_name kling-v2-6` | | | A | $0.55 |
+| └ `--model_name kling-v1-6` | | | B | $0.30 |
+| └ `--model_name kling-v1` | | | C | $0.20 |
+| `kling-i2v` | Kling | image-to-video | S/B | $0.20-0.60 |
+| `kling-lipsync` | Kling | lipsync | — | $0.50 |
+| `kling-extend` | Kling | video-extend | — | $0.30 |
+| `seedance` | ByteDance | t2v + i2v | A | $0.60 |
+| `pika` | Pika | text-to-video | C | $0.30 |
+| `pika-i2v` | Pika | image-to-video | C | $0.40 |
+| `runway` | Runway | text-to-image | — | $0.35 |
+| `runway-i2v` | Runway | image-to-video | A | $0.45 |
+| `hailuo` | MiniMax | text-to-video | B | $0.30 |
+| `luma` | Luma | text-to-video | A | $0.40 |
+| `luma-i2v` | Luma | image-to-video | A | $0.45 |
+| `vidu` | Vidu | text-to-video | B | $0.30 |
+| `vidu-i2v` | Vidu | image-to-video | B | $0.40 |
+| `vidu-extend` | Vidu | video-extend | — | $0.25 |
+| `moonvalley-t2v` | MoonValley | text-to-video | A | $0.40 |
+| `moonvalley-i2v` | MoonValley | image-to-video | A | $0.40 |
+| `grok-video` | xAI | text-to-video | A | $0.50 |
 
 ---
 
@@ -115,7 +267,6 @@ Path prefix: `/Users/dawizkidmal/ComfyUI/blueprints/`
 | `Image to Video (Wan 2.2).json` | I2V | Wan 2.2 I2V |
 | `Image to Video (LTX-2.3).json` | I2V | LTX I2V |
 | `First-Last-Frame to Video (LTX-2.3).json` | F-L-V | Start + end frame |
-| `First-Last-Frame to Video.json` | F-L-V | Generic F-L-V |
 | `Canny to Video (LTX 2.0).json` | controlnet-v | Edge to video |
 | `Depth to Video (ltx 2.0).json` | controlnet-v | Depth to video |
 | `Pose to Video (LTX 2.0).json` | controlnet-v | Pose to video |
@@ -132,54 +283,6 @@ Path prefix: `/Users/dawizkidmal/ComfyUI/blueprints/`
 | Blueprint | Type | Use |
 |-----------|------|-----|
 | `Text to Audio (ACE-Step 1.5).json` | T2A | ACE-Step audio gen |
-
----
-
-## Decision Flowchart
-
-```
-Is this IMAGE or VIDEO?
-
-├── IMAGE
-│   ├── Need text in image (poster, sign, label)?
-│   │   ├── Strongest text → ideogram (cloud) or dalle (cloud)
-│   │   └── Fast text → nano-banana (cloud)
-│   ├── Portrait / face-focused?
-│   │   ├── Cloud max quality → flux-pro / nano-banana
-│   │   └── Local → Text to Image (Flux.2 Dev).json
-│   ├── Cinematic still / hero shot?
-│   │   ├── Cloud → flux-pro, flux-ultra, stability-ultra
-│   │   └── Local → Text to Image (Flux.2 Dev).json
-│   ├── Wide style range / illustration?
-│   │   ├── Cloud → stability-sd3, recraft, reve
-│   │   └── Local → Text to Image (NetaYume Lumina).json
-│   ├── Edit existing image?
-│   │   ├── Versatile cloud → nano-banana, flux-kontext, recraft-i2i
-│   │   ├── Max quality → flux-kontext-max
-│   │   └── Local → Image Edit (Flux.2 Dev).json or (Qwen 2511).json
-│   ├── Inpaint? → flux-fill (cloud) or Image Inpainting (Flux.1 Fill Dev).json (local)
-│   ├── Outpaint? → flux-expand (cloud) or Image Outpainting (Qwen-Image).json (local)
-│   ├── Remove background? → recraft-rmbg (cloud) or Remove Background (BiRefNet).json
-│   ├── Upscale? → stability-upscale-fast (cloud) or Image Upscale(Z-image-Turbo).json
-│   ├── Vectorize? → recraft-vectorize (cloud, no local)
-│   └── ControlNet (pose/canny/depth)? → flux-canny/flux-depth (cloud) or *.Z-Image-Turbo.json (local)
-│
-└── VIDEO
-    ├── Text-to-video (motion-heavy)?
-    │   ├── Cloud → seedance (3-12s, audio), grok-video
-    │   └── Local → Text to Video (Wan 2.2).json
-    ├── Text-to-video (clean / quick)?
-    │   └── Cloud → pika, vidu, runway
-    ├── Image-to-video?
-    │   ├── Cloud → seedance, pika-i2v, runway-i2v, vidu-i2v
-    │   └── Local → Image to Video (Wan 2.2).json or LTX-2.3
-    ├── First+last frame? → First-Last-Frame to Video (LTX-2.3).json (local)
-    ├── Extend existing video? → vidu-extend (cloud)
-    ├── ControlNet video (canny/depth/pose)? → local LTX 2.0 blueprints
-    ├── Video inpaint? → Video Inpaint(Wan2.1 VACE).json (local)
-    ├── Video upscale? → Video Upscale(GAN x4).json (local)
-    └── Frame interpolation? → Frame Interpolation.json (local)
-```
 
 ---
 
@@ -205,50 +308,38 @@ workflow JSON to set width/height.
 
 `--timeout <sec>` on sync calls (default 300s). Set higher for slow models.
 
-## Approximate credit cost (verify against platform.comfy.org for actuals)
+---
 
-These are rough partner-cost estimates. ALWAYS check current pricing at
-[platform.comfy.org](https://platform.comfy.org) — partner rates change.
+## Cost-saving tactics
 
-| Tier | Models | Approx. cost per call |
-|------|--------|------------------------|
-| Low | `nano-banana`, `recraft`, `recraft-i2i`, `recraft-rmbg`, `recraft-vectorize`, `reve` | $0.01-0.03 |
-| Low-Medium | `dalle`, `ideogram`, `stability-sd3`, `stability-upscale-fast`, `grok` | $0.03-0.06 |
-| Medium | `flux-pro`, `flux-kontext`, `stability-ultra`, `runway`, `vidu` | $0.05-0.10 |
-| Medium-High | `flux-2`, `flux-ultra`, `flux-kontext-max`, `dalle-edit` | $0.08-0.15 |
-| High (video) | `seedance` (3-5s), `pika`, `pika-i2v`, `runway-i2v`, `vidu-i2v`, `vidu-extend` | $0.15-0.40 |
-| Very High (video) | `seedance` (10-12s), `grok-video` | $0.40-1.00+ |
+- **Premium-first defaults** — but pass `--budget` on any recipe / `cf auto` for B-tier downshift in one shot.
+- Use S tier for finals only. Use B/C for iteration drafts.
+- Test prompt variations locally (free) before committing to cloud video.
+- Always pre-flight with `cf preflight <model>` before async video calls.
+- Track spending: `cf jobs budget` and Comfy Cloud dashboard at platform.comfy.org.
+- Content-hash dedup is on by default — identical re-runs return existing output free.
 
-**Cost-saving tactics:**
-- Use `nano-banana` for exploration drafts, `flux-ultra` for finals only
-- Test prompt variations locally (free) before committing to cloud video
-- Use `stability-upscale-fast` over `stability-upscale-creative` for routine upscales
-- Always pre-flight with `scripts/preflight.py` to avoid wasted calls on bad inputs
-- Track spending via Comfy Cloud dashboard at platform.comfy.org
+---
 
 ## Async vs sync — execution patterns
 
 **Sync flow:**
 ```bash
-comfy generate flux-pro --prompt "..." --download out.png
+cf auto image "cinematic hero shot" --platform wide
 # Blocks ~5-30s, downloads when done
 ```
 
 **Async flow (required for video):**
 ```bash
-# 1. Submit (returns immediately with job_id)
-RESPONSE=$(comfy generate seedance --prompt "..." --duration 10 --async --json)
-JOB_ID=$(parse-job-id-from-response)
+# 1. Submit
+cf auto video-t2v "drone shot over Tokyo at night" --platform wide
+# → returns job_id, auto-logged
 
-# 2. Log it
-python3 scripts/jobs.py log seedance "$JOB_ID" --prompt "..."
+# 2. Poll later
+cf jobs pending
 
-# 3. Poll later
-python3 scripts/jobs.py pending
-
-# 4. When ready, resume + download
-comfy generate resume seedance "$JOB_ID" --download out.mp4
-python3 scripts/jobs.py complete "$JOB_ID" --output out.mp4
+# 3. Auto-poll background daemon
+cf watch --loop
 ```
 
 ---
@@ -258,12 +349,25 @@ python3 scripts/jobs.py complete "$JOB_ID" --output out.mp4
 ```bash
 export COMFY_API_KEY=comfyui-...
 
-# Text-to-image, sync, fast
-comfy generate nano-banana --prompt "..." --download /tmp/{index}.{ext}
-# → 1024×1024 PNG in ~10s
+# Premium image (auto-routed to Gemini 3 Pro)
+cf auto image "matte black coffee mug on wooden counter, golden hour"
 
-# Browse all available
-comfy generate list
+# Premium video (auto-routed to kling-v3)
+cf auto video-t2v "drone shot over Tokyo at night, neon reflections"
+
+# Budget mode (downshift everything to B tier)
+cf auto image "draft concept exploration" --budget
+
+# Override tier explicitly
+cf auto image "..." --quality a   # Force tier A (flux-ultra)
+
+# Preview what would route
+cf tiers image           # → nano-banana
+cf tiers image --budget  # → flux-pro
+cf tiers video-t2v       # → kling --model_name kling-v3
+
+# Browse all available cloud models
+cf models
 
 # Schema for a specific model
 comfy generate schema flux-pro

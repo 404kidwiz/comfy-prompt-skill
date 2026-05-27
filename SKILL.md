@@ -104,17 +104,26 @@ Default: cloud for fast prototyping, local for repeat / batch / privacy.
 ### Fast Path — Simple Creative Requests
 
 User gives clear creative intent, no specific constraints ("write me a prompt for a car
-chase at night"). Generate immediately with these defaults:
+chase at night"). Generate immediately with **premium-first defaults**:
 
 | Parameter | Default |
 |-----------|---------|
 | Aspect ratio | 16:9 |
-| Image model (cloud) | `nano-banana` (general), `flux-pro` (cinematic), `dalle` (text-in-image) |
-| Image model (local) | `Text to Image (Flux.1 Dev).json` or `Text to Image (Flux.2 Dev).json` |
-| Video model (cloud) | `seedance` (motion-heavy), `pika` (clean motion), `runway-i2v` (image-to-video) |
-| Video model (local) | `Text to Video (Wan 2.2).json` or `Text to Video (LTX-2.3).json` |
+| Quality tier | **S (premium)** — pass `--budget` to downshift to B |
+| Image model (S) | `nano-banana --model gemini-3-pro-image-preview` (Gemini 3 Pro) |
+| Image model (B fallback) | `flux-pro` |
+| Image-text (poster, sign) | `ideogram` (S — strongest text rendering) |
+| Image edit (S) | `flux-kontext-max` |
+| Video model (S) | `kling --model_name kling-v3` (latest, top quality) |
+| Video model (A) | `seedance` (cinematic motion) |
+| Video model (B fallback) | `hailuo` |
+| Image-to-video (S) | `kling-i2v --model_name kling-v3` |
+| Local image | `Text to Image (Flux.2 Dev).json` |
+| Local video | `Text to Video (Wan 2.2).json` |
 | Style | Cinematic |
 | Duration (video) | 5s (cloud sync limits), 10s local |
+
+Resolve via `cf auto <task> "<prompt>"` — auto-picks tier-correct model.
 
 Do not ask clarifying questions on Fast Path. Deliver ready-to-paste prompt + command.
 
@@ -139,31 +148,33 @@ Ask everything in ONE message — do not split rounds.
 
 ---
 
-## Route to the right model
+## Route to the right model — tier system
 
-Full mapping → `model-guide.md`. Quick decision:
+Full mapping → `model-guide.md`. **Premium-first tier table** (S default):
 
-| User wants | Best model | Path |
-|------------|-----------|------|
-| Photorealistic portrait | `nano-banana` or `flux-pro` | Cloud |
-| Cinematic still | `flux-pro`, `flux-ultra`, `stability-ultra` | Cloud |
-| Text-in-image (poster, sign) | `dalle`, `ideogram`, `nano-banana` | Cloud |
-| Edit existing image | `flux-kontext`, `nano-banana`, `recraft-i2i` | Cloud |
-| Inpaint | `flux-fill`, `recraft-inpaint` | Cloud |
-| Outpaint / expand | `flux-expand` | Cloud |
-| Background remove | `recraft-rmbg` | Cloud |
-| Vectorize | `recraft-vectorize` | Cloud |
-| Upscale | `stability-upscale`, `stability-upscale-fast`, `recraft-upscale` | Cloud |
-| Text-to-video (motion-heavy) | `seedance`, `grok-video` | Cloud |
-| Text-to-video (clean) | `pika`, `vidu`, `runway` | Cloud |
-| Image-to-video | `pika-i2v`, `runway-i2v`, `vidu-i2v`, `seedance` | Cloud |
-| Video extend | `vidu-extend` | Cloud |
-| Local Flux text-to-image | `Text to Image (Flux.1 Dev).json` | Local |
-| Local Wan video | `Text to Video (Wan 2.2).json` | Local |
-| Local LTX fast video | `Text to Video (LTX-2.3).json` | Local |
-| Local image edit | `Image Edit (Flux.2 Klein 4B).json` | Local |
-| Local upscale | `Image Upscale(Z-image-Turbo).json` | Local |
-| Local inpaint | `Image Inpainting (Flux.1 Fill Dev).json` | Local |
+| Task | S (premium default) | A | B | C (budget) |
+|------|--------------------|---|---|------------|
+| `image` | `nano-banana --model gemini-3-pro-image-preview` | `flux-ultra` | `flux-pro` | `nano-banana` (Gemini 2.5 Flash) |
+| `image-edit` | `flux-kontext-max` | `flux-kontext` | `nano-banana` | `recraft-i2i` |
+| `image-text` (poster, sign) | `ideogram` | `nano-banana` (Gemini 3 Pro) | `dalle` | `nano-banana` (Gemini 2.5 Flash) |
+| `illustration` | `recraft` | `ideogram` | `stability-sd3` | `recraft` |
+| `inpaint` | `flux-fill` | `flux-fill` | `recraft-inpaint` | `recraft-inpaint` |
+| `outpaint` | `flux-expand` | — | — | — |
+| `bg-remove` | `recraft-rmbg` | — | — | — |
+| `bg-replace` | `recraft-replace-bg` | `recraft-replace-bg` | `ideogram-bg` | — |
+| `vectorize` | `recraft-vectorize` | — | — | — |
+| `upscale` | `recraft-upscale-creative` | `stability-upscale-creative` | `recraft-upscale` | `stability-upscale-fast` |
+| `video-t2v` | `kling --model_name kling-v3` | `seedance` | `hailuo` | `pika` |
+| `video-i2v` | `kling-i2v --model_name kling-v3` | `runway-i2v` | `vidu-i2v` | `pika-i2v` |
+
+**Local fallback** (for privacy, no-cost iteration, ControlNet):
+- T2I: `Text to Image (Flux.2 Dev).json`
+- I2I edit: `Image Edit (Flux.2 Klein 4B).json`
+- T2V: `Text to Video (Wan 2.2).json`
+- Upscale: `Image Upscale(Z-image-Turbo).json`
+- Inpaint: `Image Inpainting (Flux.1 Fill Dev).json`
+
+**Resolution shortcut:** `cf auto <task> "<prompt>" [--quality s|a|b|c] [--budget]` routes automatically.
 
 ---
 

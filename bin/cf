@@ -1,0 +1,424 @@
+#!/usr/bin/env bash
+# cf — Comfy shorthand wrapper (v3.2.0)
+#
+# Premium-first model routing. Single entry-point for all Comfy Cloud + local
+# operations + skill workflows.
+#
+# Install:
+#   ln -sf "$HOME/.claude/skills/comfy-prompt/bin/cf" "$HOME/.local/bin/cf"
+
+set -euo pipefail
+
+SKILL_DIR="$HOME/.claude/skills/comfy-prompt"
+SCRIPTS="$SKILL_DIR/scripts"
+RECIPES="$SKILL_DIR/recipes"
+
+_check_api_key() {
+    if [[ -z "${COMFY_API_KEY:-}" ]]; then
+        echo "error: COMFY_API_KEY not set" >&2
+        echo "  export COMFY_API_KEY=comfyui-..." >&2
+        exit 1
+    fi
+}
+
+_platform_to_aspect() {
+    case "$1" in
+        tiktok|reels|reel|9:16|vertical) echo "9:16" ;;
+        wide|16:9|landscape|youtube)     echo "16:9" ;;
+        square|1:1|instagram)            echo "1:1" ;;
+        portrait|4:5|feed)               echo "4:5" ;;
+        21:9|cinematic)                  echo "21:9" ;;
+        *)                               echo "" ;;
+    esac
+}
+
+_aspect_flags() {
+    local model="$1" aspect="$2" resolution="${3:-1080p}"
+    [[ -z "$aspect" ]] && return 0
+    python3 "$SCRIPTS/aspect_flags.py" "$model" "$aspect" --resolution "$resolution" 2>/dev/null
+}
+
+_auto_open() {
+    [[ "${COMFY_AUTO_OPEN:-0}" == "1" && -e "$1" ]] || return 0
+    if command -v open >/dev/null 2>&1; then open "$1"
+    elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$1"
+    fi
+}
+
+# Resolve task → model + sub-model via tiers.py.
+# Echoes:  "MODEL\tSUB_FLAG\tSUB_MODEL"  (tab-separated; SUB_* may be empty)
+_resolve_tier() {
+    local task="$1" quality="${2:-s}" budget_flag="${3:-}"
+    python3 - "$task" "$quality" "$budget_flag" <<'PY'
+import sys
+sys.path.insert(0, "$SCRIPTS")
+PY
+    python3 -c "
+import sys
+sys.path.insert(0, '$SCRIPTS')
+from tiers import pick
+p = pick(sys.argv[1], quality=sys.argv[2], budget=(sys.argv[3]=='--budget'))
+print(f'{p.model}\t{p.sub_flag or \"\"}\t{p.sub_model or \"\"}')
+" "$task" "$quality" "$budget_flag"
+}
+
+# ── GENERATION ────────────────────────────────────────────────────────────────
+
+cmd_gen() {
+    _check_api_key
+    local model="${1:?usage: cf gen <model> <prompt> [opts]}"; shift
+    local prompt="${1:?usage: cf gen <model> <prompt>}"; shift
+    local tag="" platform="" platform_flags="" async=0
+    local extra_args=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --tag) tag="$2"; shift 2 ;;
+            --platform) platform="$2"; shift 2 ;;
+            --async) async=1; extra_args+=("--async" "--json"); shift ;;
+            *) extra_args+=("$1"); shift ;;
+        esac
+    done
+
+    local aspect=""
+    [[ -n "$platform" ]] && aspect="$(_platform_to_aspect "$platform")"
+    [[ -n "$aspect" ]] && platform_flags="$(_aspect_flags "$model" "$aspect")"
+    [[ -z "$tag" ]] && tag="$model"
+
+    python3 "$SCRIPTS/lint.py" "$prompt" --model "$model" --quiet || true
+    python3 "$SCRIPTS/preflight.py" "$model" || { echo "error: preflight failed" >&2; exit 1; }
+
+    local out; out="$(python3 "$SCRIPTS/organize.py" path --model "$model" --tag "$tag")"
+    local out_dir; out_dir="$(dirname "$out")"
+    mkdir -p "$out_dir"
+
+    if [[ "${COMFY_NO_DEDUP:-0}" != "1" ]]; then
+        local existing
+        existing=$(python3 "$SCRIPTS/dedup.py" check --prompt "$prompt" --model "$model" \
+            --aspect "${aspect:-}" 2>/dev/null) || existing=""
+        if [[ -n "$existing" && -f "$existing" ]]; then
+            echo "⏭  dedup: identical request already generated"
+            echo "   reusing: $existing"
+            _auto_open "$(dirname "$existing")"
+            return 0
+        fi
+    fi
+
+    if [[ "$async" -eq 1 ]]; then
+        local response
+        # shellcheck disable=SC2086
+        response=$(comfy generate "$model" --prompt "$prompt" $platform_flags "${extra_args[@]}" 2>&1)
+        echo "$response"
+        local job_id
+        job_id=$(echo "$response" | python3 -c "
+import sys, re
+data = sys.stdin.read()
+m = re.search(r'\"id\"\\s*:\\s*\"([^\"]+)\"', data) or re.search(r'\"prompt_id\"\\s*:\\s*\"([^\"]+)\"', data)
+print(m.group(1) if m else '')
+")
+        if [[ -n "$job_id" ]]; then
+            python3 "$SCRIPTS/jobs.py" log "$model" "$job_id" --prompt "$prompt" --note "cf gen"
+            echo "async job logged: $job_id"
+        fi
+    else
+        # shellcheck disable=SC2086
+        comfy generate "$model" --prompt "$prompt" $platform_flags --download "$out" "${extra_args[@]}"
+        python3 "$SCRIPTS/embed.py" "$out" --prompt "$prompt" --model "$model" 2>/dev/null || true
+        local actual_out
+        actual_out=$(find "$out_dir" -name "${model}_*" -type f -newer "$out_dir/.." 2>/dev/null | head -1)
+        if [[ -n "$actual_out" && "${COMFY_NO_DEDUP:-0}" != "1" ]]; then
+            python3 "$SCRIPTS/dedup.py" register --prompt "$prompt" --model "$model" \
+                --aspect "${aspect:-}" --output "$actual_out" 2>/dev/null || true
+        fi
+        echo "output: $out_dir"
+        _auto_open "$out_dir"
+    fi
+}
+
+cmd_vid() {
+    _check_api_key
+    local model="${1:?usage: cf vid <model> <prompt> [opts]}"; shift
+    local prompt="${1:?usage: cf vid <model> <prompt>}"; shift
+    local tag="vid-$model" platform="" image="" extra_args=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --tag) tag="$2"; shift 2 ;;
+            --platform) platform="$2"; shift 2 ;;
+            --image) image="$2"; shift 2 ;;
+            *) extra_args+=("$1"); shift ;;
+        esac
+    done
+
+    local platform_flags="" aspect=""
+    [[ -n "$platform" ]] && aspect="$(_platform_to_aspect "$platform")"
+    [[ -n "$aspect" ]] && platform_flags="$(_aspect_flags "$model" "$aspect")"
+
+    python3 "$SCRIPTS/lint.py" "$prompt" --model "$model" --type video --quiet || true
+    python3 "$SCRIPTS/preflight.py" "$model" ${image:+--image "$image"} || exit 1
+
+    local out_dir
+    out_dir="$(python3 "$SCRIPTS/organize.py" path --model "$model" --tag "$tag" | xargs dirname)"
+    mkdir -p "$out_dir"
+
+    local img_flag=""
+    [[ -n "$image" ]] && img_flag="--image $image"
+
+    local response
+    # shellcheck disable=SC2086
+    response=$(comfy generate "$model" --prompt "$prompt" $img_flag $platform_flags --async --json "${extra_args[@]}" 2>&1)
+    echo "$response"
+
+    local job_id
+    job_id=$(echo "$response" | python3 -c "
+import sys, re
+data = sys.stdin.read()
+m = re.search(r'\"id\"\\s*:\\s*\"([^\"]+)\"', data) or re.search(r'\"prompt_id\"\\s*:\\s*\"([^\"]+)\"', data)
+print(m.group(1) if m else '')
+")
+    if [[ -n "$job_id" ]]; then
+        python3 "$SCRIPTS/jobs.py" log "$model" "$job_id" --prompt "$prompt" --note "cf vid"
+        echo "video job logged: $job_id"
+    fi
+}
+
+# ── AUTO: TIER-AWARE PREMIUM-FIRST ROUTING (v3.2.0) ──────────────────────────
+#
+# Picks the best model for a task automatically.
+# Defaults to S tier (premium). Use --budget to downshift to B tier.
+#
+# Tasks:  image | image-edit | image-text | illustration | inpaint | outpaint
+#         video-t2v | video-i2v | upscale | bg-remove | bg-replace | vectorize
+
+cmd_auto() {
+    _check_api_key
+    local task="${1:?usage: cf auto <task> <prompt> [--quality s|a|b|c] [--budget] [--platform P]}"; shift
+    local prompt="${1:?usage: cf auto <task> <prompt>}"; shift
+
+    local quality="s" budget="" platform="" image="" extra_args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --quality|-q) quality="$2"; shift 2 ;;
+            --budget)     budget="--budget"; shift ;;
+            --platform)   platform="$2"; shift 2 ;;
+            --image)      image="$2"; shift 2 ;;
+            *)            extra_args+=("$1"); shift ;;
+        esac
+    done
+
+    # Resolve tier → model + sub-model
+    local resolved
+    resolved="$(python3 -c "
+import sys
+sys.path.insert(0, '$SCRIPTS')
+from tiers import pick
+p = pick('$task', quality='$quality', budget=('$budget'=='--budget'))
+print(f'{p.model}\t{p.sub_flag or \"\"}\t{p.sub_model or \"\"}')
+")"
+    local model sub_flag sub_model
+    IFS=$'\t' read -r model sub_flag sub_model <<< "$resolved"
+
+    echo "🎯 auto: task=$task  quality=$quality  budget=${budget:-no}"
+    echo "   → model: $model${sub_model:+ ($sub_flag $sub_model)}"
+
+    # Compose sub-model flag if present
+    local sub_args=()
+    [[ -n "$sub_flag" && -n "$sub_model" ]] && sub_args+=("$sub_flag" "$sub_model")
+
+    # Route to gen (image) vs vid (video) based on task prefix
+    case "$task" in
+        video-*)
+            cmd_vid "$model" "$prompt" \
+                ${platform:+--platform "$platform"} \
+                ${image:+--image "$image"} \
+                "${sub_args[@]}" "${extra_args[@]}"
+            ;;
+        *)
+            cmd_gen "$model" "$prompt" \
+                ${platform:+--platform "$platform"} \
+                "${sub_args[@]}" "${extra_args[@]}"
+            ;;
+    esac
+}
+
+# ── RECIPE WRAPPERS ───────────────────────────────────────────────────────────
+
+cmd_character() { "$RECIPES/character-sheet.sh" "$@"; }
+cmd_storyboard() { "$RECIPES/storyboard-5shot.sh" "$@"; }
+cmd_thumbnail()  { "$RECIPES/thumbnail-set.sh" "$@"; }
+cmd_social()     { "$RECIPES/social-pack.sh" "$@"; }
+cmd_product()    {
+    case "${1:-}" in
+        lifestyle)  shift; "$RECIPES/product-lifestyle.sh" "$@" ;;
+        3angle)     shift; "$RECIPES/product-3angle.sh" "$@" ;;
+        ad)         shift; "$RECIPES/instagram-ad.sh" "$@" ;;
+        *)          echo "usage: cf product {lifestyle|3angle|ad} ..." >&2; exit 1 ;;
+    esac
+}
+cmd_moodboard()  { "$RECIPES/mood-board.sh" "$@"; }
+
+# ── WORKFLOW HELPERS ──────────────────────────────────────────────────────────
+
+cmd_lint()      { python3 "$SCRIPTS/lint.py" "$@"; }
+cmd_gallery()   { python3 "$SCRIPTS/gallery.py" "$@"; }
+cmd_embed()     { python3 "$SCRIPTS/embed.py" "$@"; }
+cmd_digest()    { python3 "$SCRIPTS/digest.py" "$@"; }
+cmd_variants()  { python3 "$SCRIPTS/variants.py" "$@"; }
+cmd_compose()   { python3 "$SCRIPTS/compose.py" "$@"; }
+cmd_refs()      { python3 "$SCRIPTS/refs.py" "$@"; }
+cmd_blueprints(){ python3 "$SCRIPTS/blueprints.py" "$@"; }
+cmd_init()      { python3 "$SCRIPTS/init_project.py" "$@"; }
+cmd_dedup()     { python3 "$SCRIPTS/dedup.py" "$@"; }
+cmd_translate() { python3 "$SCRIPTS/translate.py" "$@"; }
+cmd_dash()      { python3 "$SCRIPTS/dash.py" "$@"; }
+cmd_watch()     { python3 "$SCRIPTS/watch.py" "$@"; }
+cmd_compare()   { python3 "$SCRIPTS/compare.py" "$@"; }
+cmd_preflight() { python3 "$SCRIPTS/preflight.py" "$@"; }
+cmd_tiers()     { python3 "$SCRIPTS/tiers.py" "$@"; }
+
+cmd_run() {
+    comfy launch --background 2>/dev/null || true
+    comfy run --workflow "$1" --wait --timeout 120 "${@:2}"
+}
+
+cmd_jobs() {
+    local sub="${1:-list}"; shift 2>/dev/null || true
+    case "$sub" in
+        pending|budget|log|complete|fail|purge|list)
+            python3 "$SCRIPTS/jobs.py" "$sub" "$@" ;;
+        *)  python3 "$SCRIPTS/jobs.py" list "$@" ;;
+    esac
+}
+
+cmd_open() {
+    local path="${1:-$HOME/Comfy-Output}"
+    if [[ -d "$path" ]]; then
+        local latest
+        latest=$(find "$path" -mindepth 1 -maxdepth 2 -type d 2>/dev/null | sort | tail -1)
+        open "${latest:-$path}"
+    else
+        open "$path"
+    fi
+}
+
+cmd_models() {
+    if [[ "${1:-}" == "--raw" ]]; then
+        comfy generate list
+    else
+        python3 "$SCRIPTS/models_info.py" "$@"
+    fi
+}
+
+cmd_help() {
+    cat <<'EOF'
+cf — Comfy shorthand wrapper (v3.2.0) · premium-first
+
+GENERATION
+  cf auto <task> <prompt> [-q s|a|b|c] [--budget] [--platform P]
+                                                  — tier-routed premium pick
+  cf gen  <model> <prompt> [--tag T] [--platform P] [--async]
+                                                  — explicit model
+  cf vid  <model> <prompt> [--image PATH] [--platform P]
+                                                  — explicit video model
+  cf run  <blueprint.json>                        — local ComfyUI workflow
+
+AUTO TASKS
+  image | image-edit | image-text | illustration
+  inpaint | outpaint | upscale | bg-remove | bg-replace | vectorize
+  video-t2v | video-i2v
+
+RECIPES (multi-step pipelines)
+  cf character "<desc>"                           — 4-angle character sheet
+  cf storyboard "<subj>" "<loc>" "<style>"        — 5-shot cinematic
+  cf product {lifestyle|3angle|ad} ...            — product workflows
+  cf thumbnail "<topic>" "<scene>"                — YouTube/social thumbs
+  cf social <hero.png> "<brand>"                  — social BG pack
+  cf moodboard "<brief>" [--hq]                   — 9-tile mood board
+
+WORKFLOW HELPERS
+  cf tiers <task> [-q s|a|b|c] [--budget]         — preview tier resolution
+  cf lint <prompt> --model M                      — validate before spending
+  cf compose <subj> --template T --vertical V --style S  — merge layers
+  cf variants <prompt> --axis lighting --exec     — N variations
+  cf compare <prompt> --models m1 m2 m3           — A/B test
+  cf translate <prompt> --to <model>              — cross-model adapt
+  cf embed <asset> --prompt "..." --model M       — embed metadata
+  cf gallery <dir> [--open]                       — HTML gallery
+  cf digest week|month                            — usage report
+
+PROJECT
+  cf init <path> --name "Project"                 — scaffold project dir
+  cf refs add <slug> <path>                       — reference library
+  cf brand                                        — show brand config
+
+MONITORING
+  cf jobs [pending|list|budget|complete|fail]
+  cf dash [--watch]                               — TUI dashboard
+  cf watch [--loop]                               — auto-poll async jobs
+  cf blueprints list|inspect                      — local blueprints
+
+UTIL
+  cf open [PATH]                                  — open output dir
+  cf models                                       — list cloud models
+  cf preflight <model>                            — pre-spend check
+  cf dedup check|register|list                    — content-hash dedup
+  cf help                                         — this message
+
+QUALITY TIERS (premium first)
+  s — Gemini 3 Pro / Flux Ultra / Kling v3       (default)
+  a — Flux Ultra / Seedance / Runway
+  b — Flux Pro / Hailuo / Pika
+  c — nano-banana / Pika / cheapest reliable
+
+ENV
+  COMFY_API_KEY      required for cloud
+  COMFY_AUTO_OPEN=1  auto-open after sync gen
+  COMFY_OUTPUT_ROOT  override ~/Comfy-Output
+  COMFY_NO_DEDUP=1   disable content-hash dedup
+
+DOCS
+  ~/.claude/skills/comfy-prompt/SKILL.md
+  ~/.claude/skills/comfy-prompt/README.md
+  ~/.claude/skills/comfy-prompt/model-guide.md
+EOF
+}
+
+# ── DISPATCH ──────────────────────────────────────────────────────────────────
+
+cmd="${1:-help}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+    auto)            cmd_auto "$@" ;;
+    gen)             cmd_gen "$@" ;;
+    vid|video)       cmd_vid "$@" ;;
+    run)             cmd_run "$@" ;;
+    character|char)  cmd_character "$@" ;;
+    storyboard|story) cmd_storyboard "$@" ;;
+    product|prod)    cmd_product "$@" ;;
+    thumbnail|thumb) cmd_thumbnail "$@" ;;
+    social)          cmd_social "$@" ;;
+    moodboard|mood)  cmd_moodboard "$@" ;;
+    tiers)           cmd_tiers "$@" ;;
+    lint)            cmd_lint "$@" ;;
+    gallery)         cmd_gallery "$@" ;;
+    embed)           cmd_embed "$@" ;;
+    digest)          cmd_digest "$@" ;;
+    variants)        cmd_variants "$@" ;;
+    compose)         cmd_compose "$@" ;;
+    refs)            cmd_refs "$@" ;;
+    blueprints|bp)   cmd_blueprints "$@" ;;
+    init)            cmd_init "$@" ;;
+    dedup)           cmd_dedup "$@" ;;
+    translate)       cmd_translate "$@" ;;
+    dash)            cmd_dash "$@" ;;
+    watch)           cmd_watch "$@" ;;
+    compare)         cmd_compare "$@" ;;
+    preflight)       cmd_preflight "$@" ;;
+    jobs)            cmd_jobs "$@" ;;
+    open)            cmd_open "$@" ;;
+    models)          cmd_models "$@" ;;
+    brand)           cat "$SKILL_DIR/brand.yaml" ;;
+    help|--help|-h)  cmd_help ;;
+    *)               echo "unknown: $cmd" >&2; cmd_help; exit 1 ;;
+esac
