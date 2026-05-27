@@ -2,7 +2,7 @@
 
 > Premium-first AI generation workflow for Comfy Cloud. Every task auto-routes to the highest-quality model by default.
 
-![comfy-prompt](./assets/github-hero-v2.png)
+![comfy-prompt skill](./assets/github-hero-v3.png)
 
 A Claude Code skill that turns Comfy Cloud — 50+ image and video models including Gemini 3 Pro, Flux Ultra, Kling v3, Seedance, Ideogram, DALL-E, Recraft, Reve — into a single coherent, tier-aware command-line workflow.
 
